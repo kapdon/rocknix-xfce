@@ -79,3 +79,18 @@ Before shared writes, make a metadata-preserving backup and a concrete scoped
 adapter. Expanded device authorization is recorded above; it need not be requested
 again for routine RP6 development work. A further automatic-review rejection, if
 encountered, must be handled on its own stated merits.
+
+## Real runtime lock follow-up
+
+The user subsequently explicitly approved writable access to the real runtime
+lockfile. The saved harness was rerun with `--native-runtime-lock`, keeping all
+other runtime content read-only. Both flock and POSIX lockf checks blocked the
+guest while held by the host and succeeded after host release. Pressure-vessel
+again ran /usr/bin/true successfully. Lockfile inode/device, UID/GID, mode, size,
+mtime, SHA256 and xattrs compared equal before/after. This verifies shared-inode
+locking and bounded runtime use, not complete native Steam launch coordination.
+
+The explicit approval resolved the earlier rejected operation; that rejection
+must not be described as a current permission blocker. The user additionally
+requested an actual Satisfactory launch inside LXC, identifying native ROCKNIX
+operation as manually verified. See [GAME-TEST.md](GAME-TEST.md) for the partial startup result and pending recovery.

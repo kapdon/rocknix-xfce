@@ -103,3 +103,21 @@ Remaining work is Steam/graphics/games and native round-trip qualification, plus
 production gate/update integration. No need to ask again for routine device
 permission; no publication authorization was given. This milestone must not be
 reported as Steam launch or native-data update success.
+
+## Real-lock and Satisfactory continuation
+
+User explicitly approved the native runtime lockfile and requested Satisfactory
+inside LXC. Real-lock run passed host/guest flock and lockf contention plus
+runtime execution, with compared native lock metadata/content unchanged. Native
+Satisfactory app 526870 is build 24656030. A complete metadata-preserving backup
+was created at /storage/steam-lxc-backup-20261002/native-steam.tar (~44 GB), and
+GNU tar --compare returned zero differences before shared writes. The installed
+runtime mount adapter is backed up there as rocknix-lxc.original.
+
+The real-game test is recorded in GAME-TEST.md. Direct installed Proton launch
+rendered Satisfactory's loading screen and initialized Unreal Engine using
+Qualcomm Vulkan. It did not establish menu/gameplay acceptance: the RP6 exhausted
+memory and swap, then SSH became unresponsive. Recovery and cleanup are pending
+as of the last observation. User was asked to power-cycle the frozen device so
+cleanup can continue. Do not represent the temporary adapter as removed or native
+round-trip compatibility as verified. No production source changes or publication.
