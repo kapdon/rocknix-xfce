@@ -8,17 +8,6 @@ if [ -f /usr/local/bin/rocknix-display-metrics ]; then
 fi
 
 mode=${1:-apps}
-fuzzel_args=(rocknix-fuzzel)
-case "${mode}" in
-  apps|settings)
-    # A second tap dismisses this menu, never a confirmation or another user's menu.
-    namespace=rocknix-desktop-${mode}
-    if pkill -u "${UID}" -f "^/opt/rocknix-fuzzel/bin/fuzzel --override=namespace=${namespace}( |$)"; then
-      exit 0
-    fi
-    fuzzel_args+=(--override="namespace=${namespace}")
-    ;;
-esac
 logical_width=${ROCKNIX_LOGICAL_WIDTH:-1280}
 logical_height=${ROCKNIX_LOGICAL_HEIGHT:-720}
 bar_height=${ROCKNIX_BAR_HEIGHT:-48}
@@ -97,7 +86,8 @@ if [ ! -e "${cache}" ]; then
   mv -f "${cache_new}" "${cache}"
 fi
 
-fuzzel_args+=(
+fuzzel_args=(
+  rocknix-fuzzel
   --config=/etc/xdg/fuzzel/fuzzel.ini
   --font="Roboto:size=${font_size}"
   --width="${menu_width}"
