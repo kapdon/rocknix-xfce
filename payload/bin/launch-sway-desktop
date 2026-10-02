@@ -218,6 +218,10 @@ host_control_loop() {
         layout) swaymsg 'layout toggle tabbed splith' >/dev/null ;;
         keyboard) "${BASE}/bin/rocknix-keyboard-toggle" >/dev/null ;;
         network) "${BASE}/bin/rocknix-network" & ;;
+        games\ *)
+          read -r -a words <<<"${command}"
+          "${BASE}/bin/rocknix-games" request "${words[@]:1}" || true
+          ;;
         display\ *)
           read -r -a words <<<"${command}"
           python3 "${BASE}/bin/rocknix-display-settings" request "${words[@]:1}" || true
@@ -364,6 +368,7 @@ pkill -x wvkbd-mobintl 2>/dev/null || true
 
 mkdir -p "${RUNTIME_DIR}"
 chmod 0755 "${RUNTIME_DIR}"
+"${BASE}/bin/rocknix-games" publish
 python3 "${BASE}/bin/rocknix-display-settings" begin "${OUTPUT_NAME}"
 refresh_display_metrics
 python3 "${BASE}/bin/rocknix-display-settings" publish

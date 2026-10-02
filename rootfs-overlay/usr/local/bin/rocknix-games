@@ -1,0 +1,77 @@
+#!/usr/bin/python3
+"""Guest menu for fixed native Steam requests; no host commands or paths."""
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import time
+
+BRIDGE = Path('/run/rocknix-desktop')
+
+
+def menu(prompt, choices):
+    result = subprocess.run(['/usr/local/bin/rocknix-launcher', 'games-menu', prompt],
+        input='\n'.join(label for label, _ in choices) + '\n', text=True, capture_output=True)
+    if result.returncode:
+        return None
+    return next((value for label, value in choices if label == result.stdout.rstrip('\n')), None)
+
+
+def state():
+    return json.loads((BRIDGE / 'games.json').read_text())
+
+
+def send(*words):
+    data = ('games ' + ' '.join(words) + '\n').encode()
+    if len(data) > 480 or any('\n' in w or '\r' in w for w in words):
+        raise ValueError('invalid game request')
+    fd = os.open(BRIDGE / 'host-control', os.O_WRONLY | os.O_NONBLOCK)
+    try:
+        if os.write(fd, data) != len(data):
+            raise OSError('incomplete game request')
+    finally:
+        os.close(fd)
+
+
+def main():
+    send('refresh')
+    time.sleep(.3)
+    current = state()
+    if sys.argv[1:] == ['settings']:
+        selected = menu('While gamescope is running', [
+            ('Close Desktop · frees memory' + (' · Current' if current['mode'] == 'close' else ''), 'close'),
+            ('Keep Desktop running' + (' · Current' if current['mode'] == 'keep' else ''), 'keep'),
+            ('Back', None)])
+        if selected:
+            send('mode', selected)
+            for _ in range(30):
+                time.sleep(.1)
+                if state()['mode'] == selected:
+                    return
+            raise OSError('setting was not saved')
+        return
+    if current.get('busy'):
+        if menu('A gamescope session is running', [('Back', None), ('Stop game and Steam', 'stop')]) == 'stop':
+            send('stop')
+        return
+    selected = menu('Installed native Steam games', [(g['name'], g['id']) for g in current['games']] + [('Back', None)])
+    if selected is None:
+        return
+    mode = current['mode']
+    if mode == 'close' and menu('Save your work · close Steam to return', [
+            ('Cancel', None), ('Close desktop apps and launch', 'launch')]) != 'launch':
+        return
+    send('launch', selected, mode)
+    # Closing Desktop tears this process down. Keep mode can display rejection.
+    time.sleep(1)
+    error = state().get('error')
+    if error:
+        menu(error, [('Back', None)])
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (OSError, ValueError, KeyError):
+        menu('Games unavailable — reopen Desktop', [('Back', None)])

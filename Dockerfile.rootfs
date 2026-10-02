@@ -179,6 +179,7 @@ RUN chmod 0755 \
       /usr/local/bin/rocknix-keyboard-toggle \
       /usr/local/bin/rocknix-launcher \
       /usr/local/bin/rocknix-display-menu \
+      /usr/local/bin/rocknix-games \
       /usr/local/bin/rocknix-display-metrics \
       /usr/local/bin/rocknix-fuzzel \
       /usr/local/bin/rocknix-network-settings \

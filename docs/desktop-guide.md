@@ -88,3 +88,28 @@ scale for 15 seconds. Keep saves it; an unconfirmed change reverts automatically
 Desktop defaults to 1.0× and restores the host display on exit. Supported
 output choices come from the active device; eligibility is not validation of
 every resolution, scaling choice or touch target.
+
+## Native Steam games
+
+Apps → Steam games lists installed titles from ROCKNIX's native Steam libraries.
+Settings → Gamescope settings controls what happens when one is launched:
+
+- **Close Desktop** (default) closes desktop apps and stops LXC before starting
+  native gamescope. Save your work; the launch menu asks for confirmation.
+  Closing Steam/gamescope returns to a fresh Desktop session; closed apps are not
+  restored. Quitting only the game leaves Steam open.
+- **Keep Desktop running** leaves your apps available beside gamescope. Opening
+  Steam games again offers a stop action. Exiting Desktop also stops this game
+  session.
+
+The choice persists across Desktop restarts. Both options run native ARM64 Steam
+outside LXC using nested Wayland gamescope at 1280×720, with host Sway retained.
+This requires the existing native Steam runtime and installed game libraries;
+it does not install Steam or provide native Steam's broken Browse dialog.
+Close another Steam session before launching here. The launcher owns one game
+session, restores native binfmt state after it ends, and stops it if host available
+RAM drops below 1.5 GiB. Frame generation is disabled for this initial integration.
+
+RP6 validation currently covers Satisfactory reaching its main menu and the
+Desktop lifecycle, not loaded-factory gameplay, controller/audio acceptance or a
+full image build. See the [FPS and handoff record](../experiments/steam-lxc/NATIVE-FPS.md).

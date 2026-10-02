@@ -1,0 +1,200 @@
+#!/usr/bin/python3
+"""Host-owned native gamescope lifecycle, requested through the fixed FIFO bridge."""
+import fcntl
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import tempfile
+import time
+
+BASE = Path(__file__).resolve().parent.parent
+STATE = BASE / 'state/games.json'
+PUBLIC = Path('/run/rocknix-desktop/games.json')
+LEASE = Path('/run/rocknix-desktop-games')
+UNIT = 'rocknix-desktop-games.service'
+STEAM = Path('/storage/.local/share/Steam')
+LIBRARIES = (STEAM, Path('/storage/roms/steam'))
+MODES = ('close', 'keep')
+
+
+def run(*args, check=True, timeout=60):
+    return subprocess.run(args, check=check, timeout=timeout, capture_output=True, text=True)
+
+
+def active(unit):
+    return run('systemctl', 'is-active', '--quiet', unit, check=False).returncode == 0
+
+
+def atomic(path, value, mode=0o644):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, name = tempfile.mkstemp(dir=path.parent)
+    try:
+        with os.fdopen(fd, 'w') as out:
+            json.dump(value, out)
+            out.flush()
+            os.fsync(out.fileno())
+            os.fchmod(out.fileno(), mode)
+        os.replace(name, path)
+    finally:
+        if os.path.exists(name):
+            os.unlink(name)
+
+
+def catalog():
+    games = {}
+    for library in LIBRARIES:
+        for path in sorted((library / 'steamapps').glob('appmanifest_*.acf')):
+            try:
+                if not path.is_file() or path.stat().st_size > 1024 * 1024:
+                    continue
+                text = path.read_text(errors='replace')
+            except OSError:
+                continue
+            fields = dict(re.findall(r'"(appid|name|StateFlags)"\s+"([^"\r\n]*)"', text))
+            app = fields.get('appid', '')
+            flags = fields.get('StateFlags', '0')
+            if not re.fullmatch(r'[0-9]{1,10}', flags) or not re.fullmatch(r'[1-9][0-9]{0,9}', app) or not (int(flags) & 4):
+                continue
+            name = fields.get('name', '')
+            if not name or name.startswith(('Proton', 'Steam Linux Runtime', 'Steamworks')):
+                continue
+            games[app] = {'id': app, 'name': name[:160]}
+    return sorted(games.values(), key=lambda g: (g['name'].casefold(), g['id']))
+
+
+def mode():
+    try:
+        value = json.loads(STATE.read_text())['mode']
+        return value if value in MODES else 'close'
+    except (OSError, ValueError, KeyError):
+        return 'close'
+
+
+def publish(error=''):
+    atomic(PUBLIC, {'mode': mode(), 'games': catalog(), 'busy': active(UNIT), 'error': error})
+
+
+def steam_running():
+    # Steam's singleton would otherwise forward the request into an unrelated
+    # native session, defeating both lifecycle ownership and Desktop's choice.
+    return run('pgrep', '-x', 'steam', check=False).returncode == 0
+
+
+def request(words):
+    if words == ['refresh']:
+        publish()
+        return
+    if words == ['stop']:
+        run('systemctl', 'stop', '--no-block', UNIT)
+    elif len(words) == 2 and words[0] == 'mode' and words[1] in MODES:
+        atomic(STATE, {'mode': words[1]}, 0o600)
+    elif len(words) == 3 and words[0] == 'launch':
+        app, selected = words[1:]
+        if selected not in MODES or app not in {g['id'] for g in catalog()}:
+            raise ValueError('Game is no longer installed')
+        if (LEASE / 'session.json').exists() and not active(UNIT):
+            raise ValueError('Previous game session needs host recovery')
+        if active(UNIT) or steam_running() or active('steam-bigpicture.scope'):
+            raise ValueError('Close the existing Steam session first')
+        if not active('rocknix-desktop.service'):
+            raise ValueError('Desktop is no longer running')
+        properties = ['--property=KillMode=control-group', '--property=TimeoutStopSec=20',
+                      '--property=TasksMax=1200', '--property=After=sway.service',
+                      '--property=BindsTo=sway.service',
+                      f'--property=ExecStopPost={BASE}/bin/rocknix-games recover']
+        if selected == 'keep':
+            properties += ['--property=BindsTo=rocknix-desktop.service sway.service',
+                           '--property=After=rocknix-desktop.service sway.service']
+        run('systemd-run', '--unit='+UNIT, '--collect', *properties,
+            str(BASE / 'bin/rocknix-games'), 'session', app, selected)
+    else:
+        raise ValueError('Invalid games request')
+    publish()
+
+
+def recover():
+    path = LEASE / 'session.json'
+    if not path.exists():
+        return
+    saved = json.loads(path.read_text())
+    for name, enabled in saved['binfmt'].items():
+        target = Path('/proc/sys/fs/binfmt_misc') / name
+        if target.exists():
+            target.write_text('1' if enabled else '0')
+    # ExecStopPost runs only after the entire owned cgroup has been reaped.
+    state = run('systemctl', 'is-system-running', check=False).stdout.strip()
+    if saved['mode'] == 'close' and saved.get('desktop_stopped') and state not in ('stopping', 'offline'):
+        run('systemctl', 'start', '--no-block', 'essway.service')
+        for _ in range(100):
+            if active('essway.service'):
+                break
+            time.sleep(.1)
+        run('systemctl', 'start', '--no-block', 'rocknix-desktop.service')
+    path.unlink()
+    if PUBLIC.parent.exists() and saved['mode'] == 'keep':
+        publish()
+
+
+def session(app, selected):
+    if selected not in MODES or app not in {g['id'] for g in catalog()}:
+        raise ValueError('Invalid game')
+    LEASE.mkdir(mode=0o700, exist_ok=True)
+    # One launcher owns the global binfmt transition. A second request cannot
+    # overlap, and installer maintenance remains excluded while LXC is closed.
+    with open(LEASE / 'lock', 'w') as lock, open('/storage/.rocknix-desktop-install.lock', 'r+') as install:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fcntl.flock(install, fcntl.LOCK_SH | fcntl.LOCK_NB)
+        if steam_running() or active('steam-bigpicture.scope'):
+            raise ValueError('Native Steam is already running')
+        if not active('rocknix-desktop.service'):
+            raise ValueError('Desktop stopped before launch')
+        saved = {'mode': selected, 'desktop_stopped': False, 'binfmt': {}}
+        for name in ('x86', 'box32', 'box64'):
+            path = Path('/proc/sys/fs/binfmt_misc') / name
+            if path.exists():
+                saved['binfmt'][name] = path.read_text().splitlines()[0] == 'enabled'
+        atomic(LEASE / 'session.json', saved, 0o600)
+        if selected == 'close':
+            saved['desktop_stopped'] = True
+            atomic(LEASE / 'session.json', saved, 0o600)
+            run('systemctl', 'stop', 'rocknix-desktop.service')
+            run('systemctl', 'stop', 'essway.service')
+        for name in saved['binfmt']:
+            (Path('/proc/sys/fs/binfmt_misc') / name).write_text('0')
+        child = subprocess.Popen(['/bin/bash', str(BASE / 'bin/rocknix-games-session'), app],
+                                 env={'PATH': '/usr/bin:/usr/sbin:/bin:/sbin', 'HOME': '/storage'})
+        # The host watchdog includes compositor memory outside the LXC cgroup.
+        while child.poll() is None:
+            available = next(int(line.split()[1]) for line in Path('/proc/meminfo').read_text().splitlines()
+                             if line.startswith('MemAvailable:'))
+            if available < 1536 * 1024:
+                print('Stopping gamescope: less than 1.5 GiB available RAM', flush=True)
+                break
+            time.sleep(1)
+        # Exiting the main service reaps Steam, gamescope and game descendants.
+        # Durable recovery belongs to ExecStopPost, including on forced kills.
+
+
+if __name__ == '__main__':
+    if os.getuid() != 0:
+        raise SystemExit('Host helper requires root')
+    try:
+        action, *args = sys.argv[1:]
+        if action == 'publish' and not args:
+            publish()
+        elif action == 'request':
+            request(args)
+        elif action == 'session' and len(args) == 2:
+            session(*args)
+        elif action == 'recover' and not args:
+            recover()
+        else:
+            raise ValueError('Invalid games action')
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        print(str(error), file=sys.stderr)
+        if sys.argv[1:2] == ['request'] or (sys.argv[1:2] == ['session'] and PUBLIC.exists()):
+            publish(str(error)[:160])
+        raise SystemExit(1)

@@ -28,5 +28,5 @@ fi
 
 text=Settings
 
-printf '{"text":"%s","tooltip":"%s · %s\\nOpen network, audio, display or layout settings","class":"%s"}\n' \
+printf '{"text":"%s","tooltip":"%s · %s\\nOpen network, audio, display, gamescope or layout settings","class":"%s"}\n' \
   "${text}" "${network}" "${audio}" "${state_class}"

@@ -1,0 +1,17 @@
+#!/bin/bash
+set -Eeuo pipefail
+[[ ${1:-} =~ ^[1-9][0-9]{0,9}$ ]] || exit 2
+source /etc/profile
+export HOME=/storage USER=root LOGNAME=root
+export XDG_RUNTIME_DIR=/run/0-runtime-dir WAYLAND_DISPLAY=wayland-1
+export PULSE_SERVER=unix:/run/0-runtime-dir/pulse/native
+export STEAM_COMPAT_GRAPHICS_PROVIDER=/storage/.local/share/fex-emu/RootFS/ArchLinux/graphics_provider.json
+export DISABLE_LSFGVK=1
+# Avoid Unreal swapchain recreation assertion observed in Satisfactory.
+export ENABLE_GAMESCOPE_WSI=0
+unset DISPLAY MESA_LOADER_DRIVER_OVERRIDE VK_DRIVER_FILES VK_ICD_FILENAMES
+export LD_LIBRARY_PATH=/storage/.local/share/Steam/lib/aarch64-linux-gnu
+exec /usr/bin/gamescope --backend wayland -W 1280 -H 720 -w 1280 -h 720 -r 60 \
+  --xwayland-count 2 --force-windows-fullscreen -- \
+  /storage/.local/share/Steam/steamrtarm64/steam \
+  -deckard -steamos3 -nobigpicture -noshaders -silent -applaunch "$1"

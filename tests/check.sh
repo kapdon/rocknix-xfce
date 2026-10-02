@@ -24,6 +24,7 @@ python3 tests/lxc-session.py
 python3 tests/keyboard-suppression.py
 python3 tests/launcher-cleanup.py
 python3 tests/settings-label.py
+python3 tests/games.py
 python3 tests/display-policy.py
 python3 tests/display-host.py
 python3 tests/display-metrics.py

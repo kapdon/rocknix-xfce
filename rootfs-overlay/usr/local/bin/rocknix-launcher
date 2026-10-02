@@ -73,7 +73,7 @@ available_height=$((logical_height - bar_height - keyboard_height - 48 - 2 * ver
 line_count=$((available_height / line_height - 1))
 [ "${line_count}" -ge 1 ] || line_count=1
 [ "${line_count}" -le 8 ] || line_count=8
-settings_lines=$((line_count < 4 ? line_count : 4))
+settings_lines=$((line_count < 5 ? line_count : 5))
 confirmation_lines=$((line_count < 2 ? line_count : 2))
 
 # With dpi-aware=no, Fuzzel points render at 96/72 pixels times output scale;
@@ -115,6 +115,10 @@ if [ -n "${output_name}" ]; then
 fi
 
 case "${mode}" in
+  games-menu)
+    exec "${fuzzel_args[@]}" --cache=/dev/null --dmenu --no-sort \
+      --lines="${line_count}" --prompt='GAMES  ' --placeholder="${2:-Choose a game}"
+    ;;
   display-menu)
     exec "${fuzzel_args[@]}" --cache=/dev/null --dmenu --no-sort \
       --lines="${line_count}" --prompt='DISPLAY  ' --placeholder="${2:-Choose a setting}"
@@ -136,6 +140,7 @@ case "${mode}" in
         'Audio settings' \
         'Network settings' \
         'Display settings' \
+        'Gamescope settings' \
         'Toggle tabbed / split layout' |
         "${fuzzel_args[@]}" \
           --cache=/dev/null \
@@ -150,6 +155,7 @@ case "${mode}" in
         /usr/local/bin/rocknix-network-settings >/dev/null 2>&1 &
         ;;
       'Display settings') /usr/local/bin/rocknix-display-menu ;;
+      'Gamescope settings') /usr/local/bin/rocknix-games settings ;;
       'Toggle tabbed / split layout') /usr/local/bin/rocknix-window-switcher layout ;;
     esac
     ;;

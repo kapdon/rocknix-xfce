@@ -13,5 +13,5 @@ for width in ('640', '960', '1280', '1920', 'invalid'):
                                  'ROCKNIX_LOGICAL_WIDTH': width})
     state = json.loads(result.stdout)
     assert state['text'] == 'Settings', state
-    assert 'Open network, audio, display or layout settings' in state['tooltip']
+    assert 'Open network, audio, display, gamescope or layout settings' in state['tooltip']
 print('PASS: explicit Settings label at every width; details remain in tooltip')
