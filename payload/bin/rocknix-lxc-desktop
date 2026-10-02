@@ -146,6 +146,12 @@ class DesktopMounts:
         self.native_environment = ('VK_DRIVER_FILES=/run/rocknix-native/vulkan.json\n'
                                    'LD_LIBRARY_PATH=/run/rocknix-native/lib\n')
         if mode in ('graphics', 'codecs'):
+            # Firefox's decoder broker derives readable provider paths from
+            # this list, including the generated EGL manifest and plugins.
+            self.native_environment = self.native_environment.replace(
+                'LD_LIBRARY_PATH=/run/rocknix-native/lib\n',
+                'LD_LIBRARY_PATH=/run/rocknix-native/lib:/run/rocknix-native/dri:'
+                '/run/rocknix-native/gbm:/run/rocknix-native\n')
             egl = self.directory / 'native-egl.json'
             egl.write_text(json.dumps({'file_format_version': '1.0.0', 'ICD': {
                 'library_path': '/run/rocknix-native/lib/libEGL_mesa.so.0'}}) + '\n')
