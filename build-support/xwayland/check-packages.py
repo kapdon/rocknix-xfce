@@ -6,7 +6,7 @@ import sys
 
 ALLOWED = {'xwayland', 'x11-xkb-utils', 'x11-utils', 'xserver-common',
            'libfontenc1', 'libxaw7', 'libxcvt0', 'libxfont2', 'libxkbfile1',
-           'libxxf86dga1'}
+           'libxxf86dga1', 'libxmuu1', 'libxtst6'}
 REQUIRED = {'xwayland', 'x11-xkb-utils', 'x11-utils'}
 
 
