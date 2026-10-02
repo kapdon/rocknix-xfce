@@ -1,5 +1,10 @@
 # RP6 installed-state findings — 2026-10-02
 
+**Later evidence:** [DEVICE-TESTS.md](DEVICE-TESTS.md) supersedes the stage-1
+permission/pending-test statements below. The user authorized RP6 development;
+disposable idmap and ARM64 nested-runtime tests have now run. Steam/client/game
+and native round-trip qualification remain outstanding.
+
 Read-only SSH inventory succeeded using existing local credentials and the
 previously verified device connection. Credentials, addresses, raw inventory,
 library account metadata and process details remain in private local artifacts.

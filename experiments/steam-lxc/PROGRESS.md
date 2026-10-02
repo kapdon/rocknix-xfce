@@ -88,3 +88,18 @@ so no image build or unchanged upstream suites were run. The next experimental
 step requires explicit authorization for stage-1 disposable device tests.
 Local-phase completion does not establish Steam support, update safety or native
 round trips. No device changes, pushes, publication or merges occurred.
+
+## Authorized device continuation
+
+The user authorized disposable LXC tests and then general RP6 development work.
+DEVICE-TESTS.md records the completed storage/nested-runtime POC and its limits.
+Saved harness reproduced root-owner idmapped writes, foreign-owner EACCES,
+nested namespaces, and pressure-vessel running /usr/bin/true in the downloaded
+ARM64 runtime with a disposable lock and ~221 MiB scratch. Native runtime content
+stayed read-only. Automatic review rejected the real writable lock; the suggested
+copy alternative succeeded. Cleanup verified; Desktop service restored active.
+
+Remaining work is Steam/graphics/games and native round-trip qualification, plus
+production gate/update integration. No need to ask again for routine device
+permission; no publication authorization was given. This milestone must not be
+reported as Steam launch or native-data update success.

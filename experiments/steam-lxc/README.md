@@ -25,8 +25,12 @@ is `codex/steam-lxc-reuse`, based on verified remote `dev` at
 - **Historical evidence:** project docs describe RP6 Desktop and native FEX
   behavior; none establishes Steam-in-LXC or current-device round-trip safety.
   This investigation did not collect or reinterpret old screenshots as proof.
-- **Local results:** 32 disposable-fixture/process tests pass. No actual LXC
-  mounts, ARM execution, Steam login, game, update, or native round trip tested.
+- **Local results:** 32 disposable-fixture/process tests pass. No
+  Steam login, game, update, or native round trip tested.
+- **Device POC:** [DEVICE-TESTS.md](DEVICE-TESTS.md) records actual idmapped
+  fixture writes and ARM64 pressure-vessel execution of `/usr/bin/true`. Mixed
+  owners reject writes; runtime startup required a disposable lock and ~221 MiB
+  materialized cache. These are not Steam/game acceptance.
 - **Current read-only RP6 evidence:** [INSTALLED.md](INSTALLED.md) records actual
   firmware/Desktop revisions, both library paths, mixed ownership, installed
   tools and static dependency candidates. No Steam was launched. Writable updates,
@@ -226,7 +230,7 @@ validate ELF dependencies, preserve snapshot-copy ownership automatically, or
 handle concurrent mutation. It deliberately refuses the live host root `/`.
 
 No full image build is warranted for experiment-only files; no runtime payload
-changed. No hardware-operation milestone is passed. Follow [VALIDATION.md](VALIDATION.md)
+changed. The storage/nested-runtime POC has hardware evidence; Steam acceptance remains open. Follow [VALIDATION.md](VALIDATION.md)
 for exact staged collection, acceptance and recovery. If shared client updates or
 prefix round trips fail, fall back to a separate small client/home and share
 compatible depots only, with separate per-environment prefixes/caches as needed.

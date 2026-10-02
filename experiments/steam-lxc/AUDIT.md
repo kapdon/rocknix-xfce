@@ -1,5 +1,10 @@
 # Requirement audit — 2026-10-02
 
+**Later evidence:** [DEVICE-TESTS.md](DEVICE-TESTS.md) supersedes the stage-1
+permission/pending-test statements below. The user authorized RP6 development;
+disposable idmap and ARM64 nested-runtime tests have now run. Steam/client/game
+and native round-trip qualification remain outstanding.
+
 The local investigation is not end-to-end Steam support. This table audits the
 original request without treating green fixtures as hardware evidence.
 

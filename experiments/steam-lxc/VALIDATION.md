@@ -1,10 +1,12 @@
 # Staged RP6 validation and recovery
 
 Stage 0 read-only inventory has partially run; see [INSTALLED.md](INSTALLED.md)
-for actual evidence and remaining inspection gaps. No stages 1–4 have run.
+for actual evidence and remaining inspection gaps. Stage-1 storage and nested
+runtime tests now have results in [DEVICE-TESTS.md](DEVICE-TESTS.md); graphics
+and stages 2–4 remain unqualified. The user has authorized RP6 development changes.
 Existing device access is available. Read-only inventory is within research scope.
-Stages 1 onward change device
-state or launch software and require separate explicit authorization. Keep all
+The earlier separate-authorization boundary for device work is superseded by
+that approval; preserve the native-data objective and take backups before writes. Keep all
 collected account data private; publish only redacted findings and version IDs.
 
 ## 0. Read-only inventory before designing installable integration
