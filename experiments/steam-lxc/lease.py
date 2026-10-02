@@ -14,54 +14,116 @@ class Lease:
         self.directory = Path(directory)
         self.side = side
         self.scopes_empty = scopes_empty
-        self.fd = None
+        self.fd = self.dirfd = None
+
+    def _directory(self):
+        # Descriptor traversal rejects symlink ancestors. Root-owned sticky /tmp
+        # supports disposable fixtures; production state belongs under /run or
+        # managed/host/state. Only the terminal directory may contain lease data.
+        if not self.directory.is_absolute() or '..' in self.directory.parts:
+            raise ValueError('absolute canonical lease directory required')
+        fd = os.open('/', os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            for part in self.directory.parts[1:]:
+                child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+                os.close(fd)
+                fd = child
+                info = os.fstat(fd)
+                sticky_root = info.st_uid == 0 and info.st_mode & stat.S_ISVTX
+                if info.st_uid not in (0, os.geteuid()) or (info.st_mode & 0o022 and not sticky_root):
+                    raise ValueError('untrusted lease ancestor')
+            info = os.fstat(fd)
+            if info.st_uid != os.geteuid() or info.st_mode & 0o077:
+                raise ValueError('lease directory must be private and owned by supervisor')
+            return fd
+        except BaseException:
+            os.close(fd)
+            raise
+
+    @staticmethod
+    def _file(fd):
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or \
+                info.st_mode & 0o077 or info.st_nlink != 1:
+            raise ValueError('lease file must be private, singly linked and supervisor-owned')
+
+    def _lock(self, create):
+        if self.fd is not None or self.dirfd is not None:
+            raise RuntimeError('lease already held')
+        self.dirfd = self._directory()
+        try:
+            flags = os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK
+            self.fd = os.open('lock', flags | (os.O_CREAT if create else 0), 0o600, dir_fd=self.dirfd)
+            self._file(self.fd)
+            try:
+                fcntl.flock(self.fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError as error:
+                raise Busy('Close Steam in the other environment first.') from error
+        except BaseException:
+            self.close_fd()
+            raise
+
+    def _marker_exists(self):
+        try:
+            os.stat('active', dir_fd=self.dirfd, follow_symlinks=False)
+            return True
+        except FileNotFoundError:
+            return False
 
     def acquire(self):
-        # Caller creates a private, trusted directory; production must additionally
-        # validate host-root ownership and every ancestor. Never guest-writable.
-        info = self.directory.lstat()
-        if not stat.S_ISDIR(info.st_mode) or info.st_mode & 0o077:
-            raise ValueError('lease directory must be private')
         if self.side not in ('native', 'lxc'):
             raise ValueError('unknown side')
-        self.fd = os.open(self.directory / 'lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+        self._lock(create=True)
         try:
-            fcntl.flock(self.fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            marker = self.directory / 'active'
-            if os.path.lexists(marker) or not self.scopes_empty():
+            if self._marker_exists() or not self.scopes_empty():
                 raise Busy('Close Steam in the other environment first; recovery may be required.')
-            with marker.open('x') as stream:
+            fd = os.open('active', os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                         0o600, dir_fd=self.dirfd)
+            with os.fdopen(fd, 'w') as stream:
                 stream.write(self.side + '\n')
                 stream.flush()
                 os.fsync(stream.fileno())
+            os.fsync(self.dirfd)
         except BaseException:
             self.close_fd()
             raise
         return self
+
+    def _clear_marker(self):
+        if not self._marker_exists():
+            return
+        fd = os.open('active', os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=self.dirfd)
+        try:
+            self._file(fd)
+        finally:
+            os.close(fd)
+        os.unlink('active', dir_fd=self.dirfd)
+        os.fsync(self.dirfd)
 
     def release(self):
         if self.fd is None:
             raise RuntimeError('lease not held')
         if not self.scopes_empty():
             raise Busy('Steam children still active; retain lease and mounts')
-        (self.directory / 'active').unlink()
+        self._clear_marker()
         self.close_fd()
 
     def close_fd(self):
-        if self.fd is not None:
-            os.close(self.fd)
-            self.fd = None
+        for attribute in ('fd', 'dirfd'):
+            fd = getattr(self, attribute)
+            if fd is not None:
+                os.close(fd)
+                setattr(self, attribute, None)
 
     @staticmethod
     def recover(directory, scopes_empty):
-        # Explicit recovery: a dead PID alone is never sufficient. Real adapters
-        # must query both host-owned cgroups and refuse on failed/unknown queries.
+        # A dead PID alone is never sufficient. Failed/unknown evidence raises
+        # without clearing the active marker. Keep the lock inode permanently.
         lease = Lease(directory, 'native', scopes_empty)
-        lease.fd = os.open(Path(directory) / 'lock', os.O_RDWR | os.O_NOFOLLOW)
+        lease._lock(create=False)
         try:
-            fcntl.flock(lease.fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
             if not scopes_empty():
                 raise Busy('recovery refused while either scope is populated')
-            (Path(directory) / 'active').unlink(missing_ok=True)
+            lease._clear_marker()
         finally:
             lease.close_fd()

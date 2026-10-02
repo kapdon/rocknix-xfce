@@ -129,7 +129,7 @@ class LeaseTests(unittest.TestCase):
         for side, other in [('native', 'lxc'), ('lxc', 'native')]:
             first = self.lease(side).acquire()
             try:
-                with self.assertRaises(BlockingIOError):
+                with self.assertRaises(Busy):
                     self.lease(other).acquire()
             finally:
                 first.release()
