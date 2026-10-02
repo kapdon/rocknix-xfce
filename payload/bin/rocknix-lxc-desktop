@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 """Host-defined desktop mounts; no guest-configurable host paths or hooks."""
 import os
+import json
 from pathlib import Path
 import re
 import runpy
@@ -16,8 +17,11 @@ FEX_ARCH = Path('/storage/.local/share/fex-emu/RootFS/ArchLinux')
 FEX_FILES = (('/usr/bin/FEX', 'fex-bin', 'bin/FEX'),
              ('/usr/bin/FEXServer', 'fex-server', 'bin/FEXServer'),
              ('/usr/lib/libfmt.so.12', 'fex-fmt', 'lib/libfmt.so.12'))
+NATIVE_LIBS = ('libvulkan_freedreno.so', 'libdrm.so.2',
+               'libdisplay-info.so.4', 'libwayland-client.so.0')
 STAGES = ('rootfs', 'home', 'control', 'wayland', 'pulse', 'render', 'decoder', 'fex-arch',
-          *(name for _, name, _ in FEX_FILES), *SHARED)
+          *(name for _, name, _ in FEX_FILES), *SHARED,
+          'native-vulkan.json', *('native-' + name for name in NATIVE_LIBS))
 
 
 def fex_host_file(source):
@@ -88,6 +92,45 @@ class DesktopMounts:
         self.bound = []
         self.access = None
         self.audio = None
+        self.native_environment = ''
+
+    def native_providers(self):
+        # Experimental opt-in belongs to the protected host state, never to
+        # guest configuration. Re-resolve exact native files each session.
+        selection = self.tools.parent / 'state/native-providers'
+        if not os.path.lexists(selection):
+            return []
+        mode = fex_host_file(selection).read_text().strip()
+        if mode != 'vulkan' or self.profile['model'] != PROFILE['RP6']:
+            raise RuntimeError('unsupported native provider selection')
+        entries = []
+        for name in NATIVE_LIBS:
+            source = fex_host_file('/usr/lib/' + name)
+            if source.parent != Path('/usr/lib'):
+                raise RuntimeError('native provider escaped the firmware library directory')
+            # Do not accept ARM32 providers or import the host loader/libc.
+            with source.open('rb') as stream:
+                header = stream.read(20)
+            if header[:6] != b'\x7fELF\x02\x01' or header[18:20] != b'\xb7\x00':
+                raise RuntimeError('native provider is not little-endian ARM64 ELF')
+            target = self.bind(source, 'native-' + name)
+            subprocess.run(['/usr/bin/mount', '-o', 'remount,bind,ro,nosuid,nodev', str(target)], check=True)
+            entries.append(f'lxc.mount.entry = {target} run/rocknix-native/lib/{name} none bind,ro,nosuid,nodev,create=file 0 0')
+        native_manifest = fex_host_file('/usr/share/vulkan/icd.d/freedreno_icd.aarch64.json')
+        data = json.loads(native_manifest.read_text())
+        api_version = data['ICD']['api_version']
+        if data['ICD']['library_path'] != '/usr/lib/libvulkan_freedreno.so' or not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', api_version):
+            raise RuntimeError('unexpected native Vulkan manifest')
+        manifest = self.directory / 'native-vulkan.json'
+        manifest.write_text(json.dumps({'file_format_version': '1.0.0', 'ICD': {
+            'library_path': '/run/rocknix-native/lib/libvulkan_freedreno.so',
+            'api_version': api_version}}) + '\n')
+        manifest.chmod(0o644)
+        entries.append(f'lxc.mount.entry = {manifest} run/rocknix-native/vulkan.json none bind,ro,nosuid,nodev,create=file 0 0')
+        self.native_environment = ('VK_DRIVER_FILES=/run/rocknix-native/vulkan.json\n'
+                                   'LD_LIBRARY_PATH=/run/rocknix-native/lib\n')
+        print('Experimental native Vulkan selected; provider load failures are fatal to the consumer.', flush=True)
+        return entries
 
     def tool(self, name, *args):
         lib = self.tools / 'usr/lib/aarch64-linux-gnu'
@@ -122,6 +165,7 @@ class DesktopMounts:
         entries = [f'lxc.mount.entry = {home} home/rocknix none bind,create=dir 0 0',
                    f'lxc.mount.entry = {audio} run/rocknix-bridge/pulse none bind,ro,create=file 0 0',
                    f'lxc.mount.entry = {control} run/rocknix-desktop none bind,ro,create=dir 0 0']
+        entries += self.native_providers()
         endpoints = [
             (self.wayland, 'wayland', 'run/rocknix-bridge/wayland-1', False),
             (Path(self.profile['render']), 'render', 'dev/dri/renderD128', True),

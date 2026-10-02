@@ -198,6 +198,7 @@ lxc.seccomp.profile = {self.tools / 'usr/share/lxc/config/common.seccomp'}
         if self.desktop is None:
             raise RuntimeError('desktop endpoints have not been prepared')
         environment = DESKTOP['session_environment'](values, self.desktop.profile)
+        environment += self.desktop.native_environment
         result = self.attach('/bin/sh', '-ec',
             'umask 022; cat > /run/rocknix-bridge/session.env; '
             'systemctl start rocknix-desktop-session.service', input=environment)
