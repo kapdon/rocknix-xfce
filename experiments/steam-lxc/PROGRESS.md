@@ -121,3 +121,23 @@ memory and swap, then SSH became unresponsive. Recovery and cleanup are pending
 as of the last observation. User was asked to power-cycle the frozen device so
 cleanup can continue. Do not represent the temporary adapter as removed or native
 round-trip compatibility as verified. No production source changes or publication.
+
+
+Recovery follow-up: SSH responded again. Stopped Desktop/test cgroup, restored
+original supervisor (SHA256 verified), removed temporary Vulkan selection, and
+verified no experimental host mounts remained. EmulationStation is running;
+available RAM recovered to 5,942 MiB. Backup retained. Guest residue and native
+shared-state comparison/round-trip validation remain outstanding.
+
+## Native gamescope investigation
+
+User requested host-native Steam alongside the LXC desktop. NATIVE-GAMESCOPE.md
+records successful real-device native Steam desktop/library rendering through
+nested Wayland gamescope. Host/guest namespaces were checked; existing account and
+library were visible, with LXC Thunar and panel still running. Non-Steam dialog
+opened with pointer input. Browse failed: no FileChooser portal/backend exists on
+host or guest, and Steam reports failure to retrieve dialog results. Portal/bus
+integration and native Proton installer workflow remain requirements. No nested
+Satisfactory gameplay claim. Temporary service processes/files cleaned; binfmt
+states restored; Desktop left active. Saved reproduction scripts, no production
+payload changes or publication.

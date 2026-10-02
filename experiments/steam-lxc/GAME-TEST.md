@@ -7,7 +7,7 @@ build 24656030) rendered its loading screen inside the unprivileged Desktop LXC.
 Its log reported `Game Engine Initialized` and `GDynamicRHIName Qualcomm Vulkan`.
 No main menu, playable scene, audio, controller, save/load, or native round trip
 was verified. The device subsequently exhausted available RAM and swap and became
-unresponsive to SSH. Cleanup remains pending device recovery.
+unresponsive to SSH. SSH later recovered; see the recovery follow-up below.
 
 This uses firmware `9fd38fa` and installed Desktop `222bbb4`, with a temporary
 adapter; it does not validate this branch's production payload. The user reports
@@ -98,3 +98,14 @@ Steam UI and nested runtimes, bounded diagnostics and a reliable watchdog outsid
 LXC. The 8 GiB cgroup cap did not prevent host exhaustion in this run. Resolve the
 client library-ready stall separately; do not turn the direct Proton diagnostic
 into a claim of complete integration.
+
+## Recovery follow-up
+
+A fresh SSH check succeeded without a confirmed reboot. Memory was still severely
+constrained (378 MiB available, all swap consumed). Stopped Desktop and terminated
+its remaining disposable cgroup; service then reported inactive/dead, with 5,942
+MiB RAM available and EmulationStation running. Swap remained largely occupied.
+Restored the original installed supervisor and verified its recorded SHA256;
+removed the temporary native Vulkan selection. No experimental host mounts remained.
+The native Steam backup is retained. Guest test packages/aliases and shared Steam
+state changes have not been rolled back; native game compatibility remains unverified.

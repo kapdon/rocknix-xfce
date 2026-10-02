@@ -237,3 +237,10 @@ compatible depots only, with separate per-environment prefixes/caches as needed.
 If nested runtimes or controller access require unacceptable boundary expansion,
 keep native Steam as the launch route; file visibility remains useful but is not
 Steam-in-LXC support.
+
+
+Later alternative: [native Steam in nested gamescope](NATIVE-GAMESCOPE.md) was
+physically investigated with LXC Desktop still running. Native desktop UI/library
+and non-Steam dialog worked; a missing file-chooser portal prevents completing
+Browse. This is the preferred direction for desktop management with native games,
+subject to the remaining integration and gameplay checks in that report.
