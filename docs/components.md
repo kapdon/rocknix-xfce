@@ -113,9 +113,14 @@ retries the brief missing-pointer window; prior immutable manifests remain
 available for recovery. A failed partial upload cannot change the old pointer.
 Manual publishers must obey the same single-writer rule.
 
-After a successful development publication, Actions records the same cumulative
-release notes in [CHANGELOG.md](../CHANGELOG.md), comparing the published source
-commit with the latest stable release. The generated section replaces the previous
+After a successful development publication, Actions records the full cumulative
+commit history in [CHANGELOG.md](../CHANGELOG.md), comparing the published source
+commit with the latest stable release. The release page shows a short summary
+from the changelog's `Highlights since <stable tag>` section and links to the full
+file. Maintain those highlights alongside feature changes; they are outside the
+generated history. If the stable tag changes before its highlights are updated,
+release notes show the new comparison's commit count and full-changelog link
+instead of repeating an old release's highlights. The generated section replaces the previous
 development snapshot; stable entries are preserved and Git history retains older
 snapshots. The workflow saves both Markdown files with its timing artifacts.
 

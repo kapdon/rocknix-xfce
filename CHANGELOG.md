@@ -2,9 +2,20 @@
 
 The development section records the latest successful development build, with
 all changes since the latest stable release. GitHub Actions updates this file
-and the rolling development release together. Earlier build snapshots remain
+and the rolling development release together. Release notes show the highlights
+below and link here for the full history. Earlier build snapshots remain
 in this file's Git history. Automated changelog commits are omitted from the
 change list.
+
+## Highlights since v0.1.0
+
+- **Faster development builds:** Reuse unchanged components and rebuild only the
+  affected parts, avoiding repeated export and compression of the Debian runtime.
+- **Apps and Settings toggles:** Tap either button again to close its open menu.
+- **Better cache reuse:** Preserve Trash packages and remote Docker layers, and
+  include the keyboard layout in its compiler inputs.
+- **Recorded release history:** Successful development builds automatically
+  record all changes since the latest stable release in this changelog.
 
 <!-- development-changelog:start -->
 

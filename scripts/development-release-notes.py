@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Describe a published development revision relative to the latest stable release."""
+"""Publish release highlights and retain the full development history in CHANGELOG.md."""
 import argparse
 from pathlib import Path
 import json
@@ -58,6 +58,28 @@ def changelog_section(content):
     return before, section, after
 
 
+def release_summary(details, changelog, repository=REPO):
+    heading = re.search(r"^## Changes since ([^\n]+)$", details, re.MULTILINE)
+    if heading is None:
+        raise RuntimeError("Development notes are missing the stable release comparison")
+    tag = heading.group(1)
+    prefix, _, _ = changelog_section(changelog)
+    # Highlights are maintained alongside feature changes, outside the generated
+    # history. Never reuse an old stable release's highlights after a new release.
+    highlights = re.search(r"^## Highlights since " + re.escape(tag) + r"\n+(.*?)(?=^## |\Z)",
+                           prefix, re.MULTILINE | re.DOTALL)
+    count = len(re.findall(r"^- ", details, re.MULTILINE))
+    if not count:
+        body = "No commits ahead of the latest stable release."
+    elif highlights and highlights.group(1).strip():
+        body = highlights.group(1).strip()
+    else:
+        noun = "commit" if count == 1 else "commits"
+        body = f"{count} {noun} since {tag}. See the full changelog for details."
+    return (details[:heading.start()] + f"## Highlights since {tag}\n\n" + body
+            + f"\n\n[Full changelog](https://github.com/{repository}/blob/dev/CHANGELOG.md)\n")
+
+
 def render_changelog(content, release_notes):
     before, _, after = changelog_section(content)
     return (before + CHANGELOG_START + "\n\n## Development\n\n"
@@ -70,11 +92,13 @@ if __name__ == "__main__":
     parser.add_argument("built_at")
     parser.add_argument("--repository", default=REPO)
     parser.add_argument("--changelog", type=Path,
-                        help="write the same notes into a copy of the checked-in changelog")
+                        help="write the full commit history into a copy of the checked-in changelog")
     args = parser.parse_args()
     if not re.fullmatch(r"[0-9a-f]{40}", args.revision):
         parser.error("revision must be a full commit SHA")
-    result = notes(args.revision, args.built_at, args.repository)
+    details = notes(args.revision, args.built_at, args.repository)
+    content = (PROJECT / "CHANGELOG.md").read_text()
+    summary = release_summary(details, content, args.repository)
     if args.changelog:
-        args.changelog.write_text(render_changelog((PROJECT / "CHANGELOG.md").read_text(), result))
-    print(result, end="")
+        args.changelog.write_text(render_changelog(content, details))
+    print(summary, end="")

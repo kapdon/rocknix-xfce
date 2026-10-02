@@ -70,8 +70,8 @@ def publish(manifest, store, repository, components_only=False):
     publisher = Publisher(repository, revision)
     with tempfile.TemporaryDirectory(prefix='component-publication-') as scratch:
         scratch = Path(scratch)
-        # Generate one snapshot before publication. The workflow records it on
-        # dev only after the release pointer, notes and tag have all succeeded.
+        # Generate release highlights and the full changelog before publication.
+        # Record the latter on dev after the pointer, notes and tag all succeed.
         notes = manifest.parent / 'development-notes.md'
         if not components_only:
             with notes.open('w') as stream:

@@ -58,7 +58,26 @@ assert 'v0.1.0' in after
 for invalid in ['missing markers', original + N['CHANGELOG_START'],
                 N['CHANGELOG_END'] + N['CHANGELOG_START']]:
     rejects(N['render_changelog'], invalid, notes)
-print('PASS: release notes copied exactly and stable changelog history retained')
+print('PASS: full commit history and stable changelog entries retained')
+
+# The release page uses curated highlights, while the generated file retains
+# every commit. An updated stable baseline must not reuse stale highlights.
+fixture = (N['CHANGELOG_START'] + '\nold history\n' + N['CHANGELOG_END'])
+curated = '## Highlights since v0.1.0\n\n- Faster builds.\n- Menu toggles.\n\n' + fixture
+summary = N['release_summary'](notes, curated, 'owner/repo')
+assert summary.startswith(f'Commit: `{REVISION}`\nBuilt: {BUILT}\n')
+assert '- Faster builds.' in summary and '- Menu toggles.' in summary
+assert '[Full changelog](https://github.com/owner/repo/blob/dev/CHANGELOG.md)' in summary
+assert 'fix: retain caches' not in summary and 'Full comparison' not in summary
+assert 'fix: retain caches' in N['render_changelog'](curated, notes)
+assert N['changelog_section'](N['render_changelog'](curated, notes))[0] == N['changelog_section'](curated)[0]
+for stale in [fixture, curated.replace('Highlights since v0.1.0', 'Highlights since v0.0.9')]:
+    fallback = N['release_summary'](notes, stale, 'owner/repo')
+    assert '3 commits since v0.1.0' in fallback and 'Faster builds' not in fallback
+empty = '\n'.join(line for line in notes.splitlines() if not line.startswith('- '))
+assert 'No commits ahead' in N['release_summary'](empty, curated)
+assert 'Faster builds' not in N['release_summary'](empty, curated)
+print('PASS: concise release highlights, full-changelog link and no stale highlights after a stable release')
 
 current = original
 requests = []

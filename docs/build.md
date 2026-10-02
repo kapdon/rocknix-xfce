@@ -87,8 +87,8 @@ A cache miss performs a full build; cache availability is not a requirement.
 
 The manually dispatched [Development components workflow](../.github/workflows/development.yml)
 publishes reusable components and a rolling manifest. Each successful publication
-updates the release notes and records the same changes since the latest stable
-release in [CHANGELOG.md](../CHANGELOG.md). Benchmark runs publish only reusable
+summarizes the release highlights and links to the full changes since the latest
+stable release in [CHANGELOG.md](../CHANGELOG.md). Benchmark runs publish only reusable
 artifacts. Preserve the manifest, build logs and source metadata; cached checks
 must identify their original execution rather than claim a new run. Verify
 artifact checksums and source/image provenance before RP6 testing. Rolling publication is
