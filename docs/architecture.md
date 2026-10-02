@@ -3,7 +3,7 @@
 Desktop Mode uses an unprivileged LXC system container.
 
 ROCKNIX supplies Sway, InputPlumber, audio, networking and device drivers.
-Desktop Mode runs native Wayland applications in a Debian 13 ARM64 filesystem.
+Desktop Mode runs Wayland and X11 applications in a Debian 13 ARM64 filesystem.
 A privileged host supervisor prepares access and launches LXC using independent,
 host-owned tools. Debian systemd runs as container root mapped to host UID200000;
 applications and keyboard run as guest UID/GID1000 (host201000). The guest user
@@ -24,6 +24,12 @@ device/service interfaces described below.
 
 The session starts Waybar and applications on `98:Desktop`, applies temporary
 window/input rules and owns a private wvkbd process inside the Debian runtime.
+A guest-owned Xwayland Satellite bridge provides `DISPLAY=:0` for legacy X11
+applications, including translated Wine. It presents ordinary windows through
+the existing Wayland connection; the host X11 socket is not imported. Xwayland
+uses a container-local Unix socket with TCP disabled. The session waits for an
+X11 query to succeed before starting applications and ends Desktop if its
+bridge exits. Display-metrics refreshes leave the bridge and applications alive.
 The host keyboard binary and persistent Sway configuration are not replaced.
 Exit Desktop confirms before exiting; cleanup restores the previous host
 keyboard/input state and EmulationStation.

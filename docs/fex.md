@@ -34,6 +34,20 @@ After a host update, a new Desktop session picks up the host files; dependency
 and ABI compatibility must still be checked. Do not update host runtime files
 during an active translated application session.
 
+## X11 applications
+
+The Desktop session supplies a guest-owned Xwayland server through Xwayland
+Satellite and exports `DISPLAY=:0`. FEX/Wine applications launched from Desktop
+inherit that display. The server uses the existing Wayland bridge to present
+windows on native Sway; no native X11 socket is shared. Session shutdown also
+terminates translated applications and their detached Wine services.
+
+When reusing a PD2 Launcher download cache across devices, let the Launcher
+reverify payloads in a fresh home. Its retained transaction journals and download
+receipts contain filesystem/inode identities and cannot be copied as valid
+state. Preserve the original home; import cached installer/client payloads
+without its `.pd2launcher-retained` directories or old `downloads.json` receipt.
+
 ## Compatibility limits
 
 FEX availability does not guarantee that an x86 application will work. Graphical

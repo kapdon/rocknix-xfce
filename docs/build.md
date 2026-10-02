@@ -104,3 +104,11 @@ later build calls that have no cache importer. Trash installation consumes a
 stage containing only audited packages, source artifacts, checksums and build
 logs; per-run exporter provenance remains in the original artifact directory
 and does not invalidate installation. Archive compression settings are unchanged.
+## Xwayland dependencies
+
+The guest image builds checksum-pinned Xwayland Satellite 0.8.3 with its locked
+Rust dependencies. Its upstream source, vendored dependency sources and license
+ship under `/opt/rocknix-xwayland`. Debian supplies Xwayland and X11 utilities.
+The bundle retains the required signed-APT package artifacts for offline updates
+of existing containers. Maintenance checks the package allowlist, keeps newer
+installed versions and refuses removals or unrelated package changes.

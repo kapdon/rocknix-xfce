@@ -48,10 +48,11 @@ scenarios. A coherent Debian-targeted build of native FFmpeg sources and
 patches is a separate source-reuse experiment, not evidence that unmodified
 native binaries work.
 
-GLX library loading does not qualify Xwayland. The current Desktop bridge
-does not import the native X11 socket or authentication. FEX also selects its
-own runtime library path; native ARM64 provider results do not qualify x86
-translation. Scripted input, captures, and digital audio evidence do not
+GLX library loading alone does not qualify Xwayland. Desktop supplies a guest
+Xwayland Satellite bridge without importing native X11 sockets or authentication.
+Packaged Mesa GLX and optional native-provider GLX require separate rendering
+checks. FEX also selects its own runtime library path; native ARM64 provider
+results do not qualify x86 translation. Scripted input, captures, and digital audio evidence do not
 replace physical-user acceptance of touch, controls, sound, and A/V sync.
 
 Device addresses, credentials, scenario scripts, build logs, and raw acceptance
