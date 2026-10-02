@@ -40,7 +40,7 @@ def main():
     current = state()
     if sys.argv[1:] == ['settings']:
         selected = menu('While gamescope is running', [
-            ('Close Desktop · frees memory' + (' · Current' if current['mode'] == 'close' else ''), 'close'),
+            ('Close Desktop · native fullscreen' + (' · Current' if current['mode'] == 'close' else ''), 'close'),
             ('Keep Desktop running' + (' · Current' if current['mode'] == 'keep' else ''), 'keep'),
             ('Back', None)])
         if selected:

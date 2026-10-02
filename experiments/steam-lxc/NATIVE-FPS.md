@@ -87,3 +87,89 @@ build, publication, loaded-save test, controller/audio acceptance or native DRM
 comparison. Native Gaming Mode's launcher does not yet participate in the same
 lock; this launcher refuses an already-running native Steam session, but an
 external simultaneous launch race is not qualified.
+
+## Stock ROCKNIX DRM baseline
+
+The user's “without gamescope” clarification meant without **our custom nested
+session**, using the stock ROCKNIX launch path. On the same RP6, invoked the actual
+EmulationStation command:
+
+```sh
+/usr/bin/runemu.sh /storage/.local/share/applications/Satisfactory.desktop \
+  -Psteam --core=steam --emulator=steam --controllers=""
+```
+
+LXC and EmulationStation were stopped first. A bounded systemd service supervised
+the test; `_STEAM_SCOPE=1` prevented the native launcher escaping that service into
+its own scope. Added only MangoApp CSV configuration, a five-minute test limit and
+an independent available-memory cutoff. Recovery restored prior binfmt and CPU/GPU
+governors and started Sway, EmulationStation and Desktop.
+
+The installed `/usr/bin/start_steam_arm64.sh` and `/usr/bin/start_steam.sh` selected
+`--backend drm`, stopped host Sway, and ran gamescope with `-W 1080 -H 1920 -r 120`,
+`--force-orientation left`, `--xwayland-count 2`, `--mangoapp`, and `-e`. Native Steam
+used `-deckard -steamos3 -gamepadui -noshaders` and the game's desktop-file URI.
+Both Sway and Desktop were inactive during the measurement. X11 geometry confirmed
+the focused Satisfactory window was **1280×720**; the captured output was 1920×1080.
+The existing game settings retained fullscreen, VSync off and no frame limit.
+
+A gamescope screenshot verified the full animated main menu (game version
+1.2.4.0, CL502094). CSV `mangoapp_2026-10-02_16-50-44.csv`, elapsed **100–155 s**:
+**2,072 frames, 37.68 FPS** reciprocal mean frame time, median instantaneous FPS
+**38.70**. This is about **7.7% above** the earlier 35.00 FPS nested/LXC-stopped run,
+and about **5.0% above** the earlier 35.88 FPS nested/LXC-running run. These are
+single menu runs, not a controlled estimate of backend or container overhead.
+
+What the live native source and runtime establish:
+
+- DRM replaces host Sway instead of adding gamescope beneath it. This is a useful
+  candidate for the Desktop's close-before-launch mode; the measured improvement
+  does not by itself establish composition as its cause.
+- The stock launcher briefly requests CPU performance mode during setup, then
+  applies the configured game governor. The observed steady governor was
+  `ondemand` on all three CPU policies, with GPU `simple_ondemand`, matching the
+  earlier Desktop tests. There was no configured core restriction or FPS cap.
+- Lossless Scaling frame generation was disabled. Native WSI was active; our
+  successful nested handoff explicitly disabled it after an Unreal swapchain
+  assertion. Do not transfer that workaround to DRM without testing.
+- Stock output targeted 120 Hz while nested targeted 60 Hz. Substantial existing
+  swap use and differing temperature/cache state remain confounders. Available
+  RAM was roughly 2.1 GiB in the settled menu and swap was almost full.
+- Native game audio initialization logged a failure. This FPS run does not qualify
+  audio, controller behavior, loaded-save performance or overall launch parity.
+
+No production launcher change follows from this comparison yet. A DRM handoff
+would need to stop and restore host Sway as well as LXC, and preserve the native
+orientation/input lifecycle. Raw CSV and captures are private under
+`/tmp/steam-performance` locally and `/tmp/stock-performance` on RP6.
+
+On stopping the test, native launcher cleanup raced the recovery service's first
+Desktop start (the job was canceled). Once Sway and EmulationStation were active,
+an explicit Desktop start succeeded. Final check: all three services active, all
+three native binfmt handlers enabled, no game/Steam/gamescope process remaining,
+CPU governors restored, and a fresh host screen capture succeeded. This cleanup
+race is another reason to qualify a production DRM handoff before adopting it.
+
+## Close-mode production integration: stock DRM
+
+At the user's request, Close Desktop now invokes stock `runemu.sh` / Steam DRM
+launch instead of our nested launcher. Keep Desktop remains nested. Existing native
+Steam shortcuts are reused by matching the selected app ID, preserving ROCKNIX's
+filename-based game settings; otherwise a host-owned app-ID shortcut is generated.
+Close mode does not inherit the nested WSI or frame-generation overrides.
+
+The close-mode service no longer binds to or orders after Sway, so the native
+launcher can stop it without terminating the game or deadlocking recovery.
+Recovery restores saved governors and binfmt, starts Sway and EmulationStation,
+then waits and retries Desktop startup. It retains its durable session record if
+Desktop fails to return. Keep mode retains its Desktop/Sway service bindings.
+
+RP6 acceptance: using the actual Apps menu, selected Steam games → Satisfactory
+and confirmed closing apps. Both LXC Desktop and Sway became inactive while stock
+DRM gamescope ran at the native orientation/refresh. A fresh screenshot verified
+Satisfactory's main menu. Issued gamescope's normal `shutdown` command; Desktop
+returned automatically, a fresh capture showed its Apps/Settings panel and Thunar,
+and the session record cleared. No Steam/gamescope processes remained; binfmt and
+CPU governors were restored. No manual recovery command was needed for this run.
+Eight lifecycle/boundary tests passed, along with the full repository source checks.
+This narrow live deployment does not add loaded-save or audio/controller acceptance.

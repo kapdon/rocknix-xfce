@@ -95,7 +95,7 @@ Apps → Steam games lists installed titles from ROCKNIX's native Steam librarie
 Settings → Gamescope settings controls what happens when one is launched:
 
 - **Close Desktop** (default) closes desktop apps and stops LXC before starting
-  native gamescope. Save your work; the launch menu asks for confirmation.
+  ROCKNIX's stock DRM gamescope session, which also stops host Sway. Save your work; the launch menu asks for confirmation.
   Closing Steam/gamescope returns to a fresh Desktop session; closed apps are not
   restored. Quitting only the game leaves Steam open.
 - **Keep Desktop running** leaves your apps available beside gamescope. Opening
@@ -103,12 +103,14 @@ Settings → Gamescope settings controls what happens when one is launched:
   session.
 
 The choice persists across Desktop restarts. Both options run native ARM64 Steam
-outside LXC using nested Wayland gamescope at 1280×720, with host Sway retained.
+outside LXC. Close mode uses the stock ROCKNIX launcher and its game settings;
+keep mode uses nested Wayland gamescope at 1280×720 with host Sway retained.
 This requires the existing native Steam runtime and installed game libraries;
 it does not install Steam or provide native Steam's broken Browse dialog.
 Close another Steam session before launching here. The launcher owns one game
 session, restores native binfmt state after it ends, and stops it if host available
-RAM drops below 1.5 GiB. Frame generation is disabled for this initial integration.
+RAM drops below 1.5 GiB. Nested mode disables frame generation and gamescope WSI for compatibility.
+Close mode follows native ROCKNIX settings, including its frame-generation choice.
 
 RP6 validation currently covers Satisfactory reaching its main menu and the
 Desktop lifecycle, not loaded-factory gameplay, controller/audio acceptance or a

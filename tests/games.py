@@ -46,16 +46,26 @@ class Games(unittest.TestCase):
                 args=run.call_args.args
                 self.assertIn('--property=KillMode=control-group',args)
                 self.assertIn(f'--property=ExecStopPost={g.BASE}/bin/rocknix-games recover',args)
+                if mode == 'close':
+                    self.assertFalse(any('sway.service' in a for a in args))
                 self.assertEqual(args[-3:],('session','526870',mode))
                 self.assertEqual('--property=BindsTo=rocknix-desktop.service sway.service' in args,mode=='keep')
 
     def test_close_recovery_restarts_essway_before_desktop(self):
-        with tempfile.TemporaryDirectory() as tmp,patch.object(g,'LEASE',Path(tmp)),patch.object(g,'active',return_value=True),patch.object(g,'run',return_value=SimpleNamespace(stdout='running')) as run:
+        with tempfile.TemporaryDirectory() as tmp,patch.object(g,'LEASE',Path(tmp)),patch.object(g.time,'sleep'),patch.object(g,'active',return_value=True),patch.object(g,'run',return_value=SimpleNamespace(stdout='running')) as run:
             p=Path(tmp)/'session.json';p.write_text(json.dumps({'mode':'close','desktop_stopped':True,'binfmt':{}}))
             g.recover()
-            self.assertEqual(run.call_args_list[-2].args,('systemctl','start','--no-block','essway.service'))
-            self.assertEqual(run.call_args_list[-1].args,('systemctl','start','--no-block','rocknix-desktop.service'))
+            self.assertEqual(run.call_args_list[-2].args,('systemctl','start','essway.service'))
+            self.assertEqual(run.call_args_list[-1].args,('systemctl','start','rocknix-desktop.service'))
             self.assertFalse(p.exists())
+
+    def test_failed_desktop_recovery_retains_lease(self):
+        with tempfile.TemporaryDirectory() as tmp,patch.object(g,'LEASE',Path(tmp)),patch.object(g.time,'sleep'),patch.object(g,'active',return_value=False),patch.object(g,'run',return_value=SimpleNamespace(stdout='running')):
+            p=Path(tmp)/'session.json'
+            p.write_text(json.dumps({'mode':'close','desktop_stopped':True,'binfmt':{}}))
+            with self.assertRaisesRegex(ValueError,'recovery failed'):
+                g.recover()
+            self.assertTrue(p.exists())
 
     def test_no_restart_during_host_shutdown(self):
         with tempfile.TemporaryDirectory() as tmp,patch.object(g,'LEASE',Path(tmp)),patch.object(g,'run',return_value=SimpleNamespace(stdout='stopping')) as run:

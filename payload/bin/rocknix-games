@@ -101,9 +101,8 @@ def request(words):
             raise ValueError('Close the existing Steam session first')
         if not active('rocknix-desktop.service'):
             raise ValueError('Desktop is no longer running')
-        properties = ['--property=KillMode=control-group', '--property=TimeoutStopSec=20',
-                      '--property=TasksMax=1200', '--property=After=sway.service',
-                      '--property=BindsTo=sway.service',
+        properties = ['--property=KillMode=control-group', '--property=TimeoutStopSec=90',
+                      '--property=TasksMax=1200',
                       f'--property=ExecStopPost={BASE}/bin/rocknix-games recover']
         if selected == 'keep':
             properties += ['--property=BindsTo=rocknix-desktop.service sway.service',
@@ -124,15 +123,23 @@ def recover():
         target = Path('/proc/sys/fs/binfmt_misc') / name
         if target.exists():
             target.write_text('1' if enabled else '0')
+    for name, governor in saved.get('governors', {}).items():
+        Path(name).write_text(governor)
     # ExecStopPost runs only after the entire owned cgroup has been reaped.
     state = run('systemctl', 'is-system-running', check=False).stdout.strip()
     if saved['mode'] == 'close' and saved.get('desktop_stopped') and state not in ('stopping', 'offline'):
-        run('systemctl', 'start', '--no-block', 'essway.service')
-        for _ in range(100):
-            if active('essway.service'):
+        # Close mode must not be ordered after/bound to Sway: DRM stops it,
+        # and recovery must be able to wait for it from ExecStopPost.
+        run('systemctl', 'start', 'sway.service')
+        run('systemctl', 'start', 'essway.service')
+        for _ in range(3):
+            time.sleep(2)
+            run('systemctl', 'start', 'rocknix-desktop.service', check=False)
+            time.sleep(2)
+            if active('rocknix-desktop.service'):
                 break
-            time.sleep(.1)
-        run('systemctl', 'start', '--no-block', 'rocknix-desktop.service')
+        else:
+            raise ValueError('Desktop recovery failed; session record retained')
     path.unlink()
     if PUBLIC.parent.exists() and saved['mode'] == 'keep':
         publish()
@@ -156,6 +163,10 @@ def session(app, selected):
             path = Path('/proc/sys/fs/binfmt_misc') / name
             if path.exists():
                 saved['binfmt'][name] = path.read_text().splitlines()[0] == 'enabled'
+        if selected == 'close':
+            saved['governors'] = {str(p): p.read_text().strip() for pattern in
+                ('devices/system/cpu/cpufreq/policy*/scaling_governor', 'class/devfreq/*/governor')
+                for p in Path('/sys').glob(pattern)}
         atomic(LEASE / 'session.json', saved, 0o600)
         if selected == 'close':
             saved['desktop_stopped'] = True
@@ -164,7 +175,7 @@ def session(app, selected):
             run('systemctl', 'stop', 'essway.service')
         for name in saved['binfmt']:
             (Path('/proc/sys/fs/binfmt_misc') / name).write_text('0')
-        child = subprocess.Popen(['/bin/bash', str(BASE / 'bin/rocknix-games-session'), app],
+        child = subprocess.Popen(['/bin/bash', str(BASE / 'bin/rocknix-games-session'), app, selected],
                                  env={'PATH': '/usr/bin:/usr/sbin:/bin:/sbin', 'HOME': '/storage'})
         # The host watchdog includes compositor memory outside the LXC cgroup.
         while child.poll() is None:

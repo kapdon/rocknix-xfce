@@ -1,10 +1,33 @@
 #!/bin/bash
 set -Eeuo pipefail
 [[ ${1:-} =~ ^[1-9][0-9]{0,9}$ ]] || exit 2
+[[ ${2:-} == close || ${2:-} == keep ]] || exit 2
 source /etc/profile
 export HOME=/storage USER=root LOGNAME=root
 export XDG_RUNTIME_DIR=/run/0-runtime-dir WAYLAND_DISPLAY=wayland-1
 export PULSE_SERVER=unix:/run/0-runtime-dir/pulse/native
+if [[ $2 == close ]]; then
+  export SWAYSOCK=/run/0-runtime-dir/sway-ipc.0.sock
+  # Keep the stock launcher inside our cgroup so exit/recovery owns all children.
+  export _STEAM_SCOPE=1
+  # Prefer the native shortcut to preserve ROCKNIX per-game settings by filename.
+  shortcut=$(python3 - "$1" <<'PYTHON'
+from pathlib import Path
+import re, sys
+app = sys.argv[1]
+for p in sorted(Path('/storage/.local/share/applications').glob('*.desktop')):
+    if re.search(r'^Exec=steam steam://rungameid/' + app + r'\s*$', p.read_text(errors='replace'), re.M):
+        print(p)
+        break
+else:
+    p = Path('/run/rocknix-desktop-games') / (app + '.desktop')
+    p.write_text('[Desktop Entry]\nType=Application\nName=Steam game\nExec=steam steam://rungameid/' + app + '\n')
+    print(p)
+PYTHON
+)
+  # Stock ROCKNIX chooses DRM, stops Sway, and applies its native game settings.
+  exec /usr/bin/runemu.sh "$shortcut" -Psteam --core=steam --emulator=steam --controllers=""
+fi
 export STEAM_COMPAT_GRAPHICS_PROVIDER=/storage/.local/share/fex-emu/RootFS/ArchLinux/graphics_provider.json
 export DISABLE_LSFGVK=1
 # Avoid Unreal swapchain recreation assertion observed in Satisfactory.
