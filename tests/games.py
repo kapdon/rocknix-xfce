@@ -14,13 +14,19 @@ spec=importlib.util.spec_from_loader(loader.name,loader)
 g=importlib.util.module_from_spec(spec);loader.exec_module(g)
 
 class Games(unittest.TestCase):
-    def test_catalog(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            library=Path(tmp);apps=library/'steamapps';apps.mkdir()
-            for app,name,flags in [('526870','Satisfactory','4'),('1','Incomplete','2'),('2','Proton 11','4'),('3;id','Injected','4')]:
-                (apps/f'appmanifest_{app}.acf').write_text(f'"appid" "{app}"\n"name" "{name}"\n"StateFlags" "{flags}"')
-            with patch.object(g,'LIBRARIES',(library,)):
-                self.assertEqual(g.catalog(),[{'id':'526870','name':'Satisfactory'}])
+    def test_catalog_tracks_native_shortcuts(self):
+        with tempfile.TemporaryDirectory() as tmp,patch.object(g,'SHORTCUTS',Path(tmp)):
+            p=Path(tmp)/'Satisfactory.desktop'
+            p.write_text('[Desktop Entry]\nName=Satisfactory\nExec=steam steam://rungameid/526870\n')
+            (Path(tmp)/'Steam.desktop').write_text('')
+            (Path(tmp)/'unsafe.desktop').write_text('[Desktop Entry]\nName=Bad\nExec=steam steam://rungameid/1; touch /tmp/unsafe\n')
+            self.assertEqual(g.catalog(),[{'id':'526870','name':'Satisfactory'}])
+            self.assertEqual(g.shortcut('526870'),str(p))
+            p.unlink()
+            self.assertEqual(g.catalog(),[])
+            with self.assertRaises(ValueError): g.shortcut('526870')
+            p.write_text('[Desktop Entry]\nName=Custom game\nExec=steam steam://rungameid/12345678901234567890\n')
+            self.assertEqual(g.catalog()[0]['name'],'Custom game')
 
     def test_reject_requests(self):
         with patch.object(g,'catalog',return_value=[{'id':'526870','name':'Satisfactory'}]),patch.object(g,'run') as run:

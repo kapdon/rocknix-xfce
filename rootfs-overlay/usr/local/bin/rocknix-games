@@ -55,7 +55,7 @@ def main():
         if menu('A gamescope session is running', [('Back', None), ('Stop game and Steam', 'stop')]) == 'stop':
             send('stop')
         return
-    selected = menu('Installed native Steam games', [(g['name'], g['id']) for g in current['games']] + [('Back', None)])
+    selected = menu('ROCKNIX Steam games', [(g['name'], g['id']) for g in current['games']] + [('Back', None)])
     if selected is None:
         return
     mode = current['mode']

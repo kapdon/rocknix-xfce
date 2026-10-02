@@ -91,7 +91,10 @@ every resolution, scaling choice or touch target.
 
 ## Native Steam games
 
-Apps → Steam games lists installed titles from ROCKNIX's native Steam libraries.
+Apps → Steam games reads the same `.desktop` shortcut folder as EmulationStation's
+Steam section (`/storage/.local/share/applications`) each time the menu opens.
+Added and removed shortcuts appear on reopening the menu. Only valid Steam game
+URIs are listed; the Steam client entry and arbitrary desktop commands are excluded.
 Settings → Gamescope settings controls what happens when one is launched:
 
 - **Close Desktop** (default) closes desktop apps and stops LXC before starting

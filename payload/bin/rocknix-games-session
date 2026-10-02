@@ -1,6 +1,6 @@
 #!/bin/bash
 set -Eeuo pipefail
-[[ ${1:-} =~ ^[1-9][0-9]{0,9}$ ]] || exit 2
+[[ ${1:-} =~ ^[1-9][0-9]{0,19}$ ]] || exit 2
 [[ ${2:-} == close || ${2:-} == keep ]] || exit 2
 source /etc/profile
 export HOME=/storage USER=root LOGNAME=root
@@ -11,20 +11,7 @@ if [[ $2 == close ]]; then
   # Keep the stock launcher inside our cgroup so exit/recovery owns all children.
   export _STEAM_SCOPE=1
   # Prefer the native shortcut to preserve ROCKNIX per-game settings by filename.
-  shortcut=$(python3 - "$1" <<'PYTHON'
-from pathlib import Path
-import re, sys
-app = sys.argv[1]
-for p in sorted(Path('/storage/.local/share/applications').glob('*.desktop')):
-    if re.search(r'^Exec=steam steam://rungameid/' + app + r'\s*$', p.read_text(errors='replace'), re.M):
-        print(p)
-        break
-else:
-    p = Path('/run/rocknix-desktop-games') / (app + '.desktop')
-    p.write_text('[Desktop Entry]\nType=Application\nName=Steam game\nExec=steam steam://rungameid/' + app + '\n')
-    print(p)
-PYTHON
-)
+  shortcut=$("$(dirname "$0")/rocknix-games" shortcut "$1")
   # Stock ROCKNIX chooses DRM, stops Sway, and applies its native game settings.
   exec /usr/bin/runemu.sh "$shortcut" -Psteam --core=steam --emulator=steam --controllers=""
 fi
@@ -37,4 +24,4 @@ export LD_LIBRARY_PATH=/storage/.local/share/Steam/lib/aarch64-linux-gnu
 exec /usr/bin/gamescope --backend wayland -W 1280 -H 720 -w 1280 -h 720 -r 60 \
   --xwayland-count 2 --force-windows-fullscreen -- \
   /storage/.local/share/Steam/steamrtarm64/steam \
-  -deckard -steamos3 -nobigpicture -noshaders -silent -applaunch "$1"
+  -deckard -steamos3 -nobigpicture -noshaders -silent "steam://rungameid/$1"

@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 """Host-owned native gamescope lifecycle, requested through the fixed FIFO bridge."""
+import configparser
 import fcntl
 import json
 import os
@@ -15,8 +16,7 @@ STATE = BASE / 'state/games.json'
 PUBLIC = Path('/run/rocknix-desktop/games.json')
 LEASE = Path('/run/rocknix-desktop-games')
 UNIT = 'rocknix-desktop-games.service'
-STEAM = Path('/storage/.local/share/Steam')
-LIBRARIES = (STEAM, Path('/storage/roms/steam'))
+SHORTCUTS = Path('/storage/.local/share/applications')
 MODES = ('close', 'keep')
 
 
@@ -43,26 +43,37 @@ def atomic(path, value, mode=0o644):
             os.unlink(name)
 
 
-def catalog():
+def shortcuts():
+    # Same directory and file type as ROCKNIX's EmulationStation Steam system.
+    # Only accept Steam launch URIs; never execute arbitrary desktop-file commands.
     games = {}
-    for library in LIBRARIES:
-        for path in sorted((library / 'steamapps').glob('appmanifest_*.acf')):
-            try:
-                if not path.is_file() or path.stat().st_size > 1024 * 1024:
-                    continue
-                text = path.read_text(errors='replace')
-            except OSError:
+    for path in sorted(SHORTCUTS.rglob('*.desktop')):
+        try:
+            if not path.is_file() or path.stat().st_size > 1024 * 1024:
                 continue
-            fields = dict(re.findall(r'"(appid|name|StateFlags)"\s+"([^"\r\n]*)"', text))
-            app = fields.get('appid', '')
-            flags = fields.get('StateFlags', '0')
-            if not re.fullmatch(r'[0-9]{1,10}', flags) or not re.fullmatch(r'[1-9][0-9]{0,9}', app) or not (int(flags) & 4):
+            entry = configparser.ConfigParser(interpolation=None, strict=True)
+            entry.read_string(path.read_text())
+            fields = entry['Desktop Entry']
+            match = re.fullmatch(r'steam\s+steam://rungameid/([1-9][0-9]{0,19})', fields.get('Exec', '').strip())
+            name = fields.get('Name', '').strip()
+            if not match or not name or any(c in name for c in '\n\r'):
                 continue
-            name = fields.get('name', '')
-            if not name or name.startswith(('Proton', 'Steam Linux Runtime', 'Steamworks')):
-                continue
-            games[app] = {'id': app, 'name': name[:160]}
+            app = match[1]
+            games.setdefault(app, {'id': app, 'name': name[:160], 'shortcut': str(path)})
+        except (OSError, UnicodeError, KeyError, configparser.Error):
+            continue
     return sorted(games.values(), key=lambda g: (g['name'].casefold(), g['id']))
+
+
+def catalog():
+    return [{'id': g['id'], 'name': g['name']} for g in shortcuts()]
+
+
+def shortcut(app):
+    for game in shortcuts():
+        if game['id'] == app:
+            return game['shortcut']
+    raise ValueError('Game is no longer in the ROCKNIX Steam list')
 
 
 def mode():
@@ -94,7 +105,7 @@ def request(words):
     elif len(words) == 3 and words[0] == 'launch':
         app, selected = words[1:]
         if selected not in MODES or app not in {g['id'] for g in catalog()}:
-            raise ValueError('Game is no longer installed')
+            raise ValueError('Game is no longer in the ROCKNIX Steam list')
         if (LEASE / 'session.json').exists() and not active(UNIT):
             raise ValueError('Previous game session needs host recovery')
         if active(UNIT) or steam_running() or active('steam-bigpicture.scope'):
@@ -196,6 +207,8 @@ if __name__ == '__main__':
         action, *args = sys.argv[1:]
         if action == 'publish' and not args:
             publish()
+        elif action == 'shortcut' and len(args) == 1:
+            print(shortcut(args[0]))
         elif action == 'request':
             request(args)
         elif action == 'session' and len(args) == 2:

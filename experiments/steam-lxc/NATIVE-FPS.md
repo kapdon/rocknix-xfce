@@ -173,3 +173,35 @@ and the session record cleared. No Steam/gamescope processes remained; binfmt an
 CPU governors were restored. No manual recovery command was needed for this run.
 Eight lifecycle/boundary tests passed, along with the full repository source checks.
 This narrow live deployment does not add loaded-save or audio/controller acceptance.
+
+## EmulationStation shortcut catalog and overlay follow-up
+
+The Desktop game catalog now reads EmulationStation's Steam shortcut directory,
+`/storage/.local/share/applications`, each time it refreshes. It no longer scans
+Steam app manifests or generates a fallback shortcut. Entries must contain a name
+and an exact Steam `rungameid` URI; arbitrary commands and the Steam client entry
+are excluded. Removing a shortcut invalidates later launch requests. Close mode
+passes the original filename to stock ROCKNIX, retaining per-game settings. Keep
+mode uses its URI but does not yet import ROCKNIX's per-game configuration helpers.
+
+The follow-up overlay test exposed the Unreal swapchain image-count assertion
+once in stock DRM, before any overlay keypress. A retry reached the menu but was
+stopped by the 1.5 GiB available-memory guard; swap was full after repeated tests.
+Neither event establishes an overlay fault. Restarted the dev device before the
+next overlay attempt. Earlier FPS tests did not disable Steam overlay, but did not
+verify that it could open; MangoApp's FPS display is a separate overlay.
+
+After reboot, stock DRM reached the animated main menu with ample memory.
+Shift+Tab and Ctrl+1 from a temporary keyboard produced no visible Steam overlay.
+Direct XTest input reached the game (menu interaction changed), but Shift+Tab on
+the game's X display and Ctrl+1 on Steam's display still did not expose an overlay.
+Gamescope focus inspection did not show an overlay window. This does not qualify
+physical Guide-button behavior, and the cause has not been established.
+
+Keep Desktop also reached the main menu using the shortcut's Steam URI. Shift+Tab
+on its game X display (and the alternate nested X display) showed no Steam overlay
+in a full host capture. Therefore neither mode's overlay is accepted as working.
+Stopped the test; Desktop and Sway stayed active, the lease cleared, and no Steam
+or gamescope process remained. The saved default remains close. Source checks and
+eight catalog/lifecycle tests passed. Physical Guide-button testing and overlay
+root-cause diagnosis remain outstanding.
