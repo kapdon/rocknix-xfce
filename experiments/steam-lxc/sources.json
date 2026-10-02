@@ -1,0 +1,46 @@
+{
+  "repository": "https://github.com/ROCKNIX/distribution",
+  "revision": "9f8c79dc12c8a49db4d90232c1b9e16b19209ea6",
+  "files": [
+    {
+      "path": "projects/ROCKNIX/packages/virtual/emulators/sources/Install Steam.sh",
+      "git_blob": "27b125b6870cb93b9c7af7227cc4b26f6c200e0f",
+      "url": "https://github.com/ROCKNIX/distribution/blob/9f8c79dc12c8a49db4d90232c1b9e16b19209ea6/projects/ROCKNIX/packages/virtual/emulators/sources/Install%20Steam.sh"
+    },
+    {
+      "path": "projects/ROCKNIX/packages/emulators/standalone/steam/package.mk",
+      "git_blob": "5d2c8b2ec4352c3f8b30d4dbf876f2f93fa9a25b",
+      "url": "https://github.com/ROCKNIX/distribution/blob/9f8c79dc12c8a49db4d90232c1b9e16b19209ea6/projects/ROCKNIX/packages/emulators/standalone/steam/package.mk"
+    },
+    {
+      "path": "projects/ROCKNIX/packages/emulators/standalone/steam/scripts/start_steam.sh",
+      "git_blob": "e01aade2a98ea5676cab283dca877d1d30e0618d",
+      "url": "https://github.com/ROCKNIX/distribution/blob/9f8c79dc12c8a49db4d90232c1b9e16b19209ea6/projects/ROCKNIX/packages/emulators/standalone/steam/scripts/start_steam.sh"
+    },
+    {
+      "path": "projects/ROCKNIX/packages/emulators/standalone/steam/scripts/start_steam_arm64.sh",
+      "git_blob": "0d5bfa4faa37b82dc1cc476677bed648d36a3318",
+      "url": "https://github.com/ROCKNIX/distribution/blob/9f8c79dc12c8a49db4d90232c1b9e16b19209ea6/projects/ROCKNIX/packages/emulators/standalone/steam/scripts/start_steam_arm64.sh"
+    },
+    {
+      "path": "projects/ROCKNIX/packages/emulators/standalone/steam/scripts/start_steam_x86.sh",
+      "git_blob": "2ba5487932f9f228a0248cc1e39dc1c76056c619",
+      "url": "https://github.com/ROCKNIX/distribution/blob/9f8c79dc12c8a49db4d90232c1b9e16b19209ea6/projects/ROCKNIX/packages/emulators/standalone/steam/scripts/start_steam_x86.sh"
+    },
+    {
+      "path": "projects/ROCKNIX/packages/compat/fex-emu/package.mk",
+      "git_blob": "962dbab263cceb08700e47db2465a0f7404d7ec1",
+      "url": "https://github.com/ROCKNIX/distribution/blob/9f8c79dc12c8a49db4d90232c1b9e16b19209ea6/projects/ROCKNIX/packages/compat/fex-emu/package.mk"
+    },
+    {
+      "path": "projects/ROCKNIX/packages/compat/fex-emu/config/fex-emu/Config.json",
+      "git_blob": "21d4deaf6ea55cb1dcc80288389ba3ccdc6e263c",
+      "url": "https://github.com/ROCKNIX/distribution/blob/9f8c79dc12c8a49db4d90232c1b9e16b19209ea6/projects/ROCKNIX/packages/compat/fex-emu/config/fex-emu/Config.json"
+    },
+    {
+      "path": "projects/ROCKNIX/packages/compat/fex-emu/config/fex-emu/AppConfig/steamwebhelper.json",
+      "git_blob": "db9d171e957a0364f8a0fe3b2c42ef83d0ee416d",
+      "url": "https://github.com/ROCKNIX/distribution/blob/9f8c79dc12c8a49db4d90232c1b9e16b19209ea6/projects/ROCKNIX/packages/compat/fex-emu/config/fex-emu/AppConfig/steamwebhelper.json"
+    }
+  ]
+}
