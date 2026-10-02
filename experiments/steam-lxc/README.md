@@ -25,7 +25,7 @@ is `codex/steam-lxc-reuse`, based on verified remote `dev` at
 - **Historical evidence:** project docs describe RP6 Desktop and native FEX
   behavior; none establishes Steam-in-LXC or current-device round-trip safety.
   This investigation did not collect or reinterpret old screenshots as proof.
-- **Local results:** 14 disposable-fixture/process tests pass. No actual LXC
+- **Local results:** 29 disposable-fixture/process tests pass. No actual LXC
   mounts, ARM execution, Steam login, game, update, or native round trip tested.
 - **Unknown installed state:** firmware, client build, all configured libraries,
   actual symlink targets, native owners, saves and runtime ELF dependencies.
@@ -57,7 +57,7 @@ or that the software has run successfully in LXC.
 Minimum added software is a guest X11 path and any missing ARM64 client ABI
 libraries, plus small path/provider/launch adapters and host coordination.
 Current base lacks X11. The separate `codex/host-library-reuse` branch has guest
-Xwayland work (`85e28c8` plus fixes) worth reviewing when integrated into dev.
+Xwayland work (`85e29c8` plus fixes) worth reviewing when integrated into dev.
 Do not copy its ongoing checkout or call it deployed. Keep Debian loader/libc;
 resolve missing libraries individually rather than mount host `/usr/lib`.
 No second client, game library, Proton download or FEX root is inherently
@@ -148,6 +148,12 @@ does not create a trust boundary for shared scripts or compatibility tools.
 
 ## Exclusive-use lifecycle and limits
 
+[EXCLUSION.md](EXCLUSION.md) refines this design: the initial lease spans the
+entire Desktop session, starting before shared mounts. The host-owned LXC
+ancestor, not a guest-controlled Steam child cgroup, is the containment boundary.
+Native Steam must be closed before entering that Desktop session. Retained
+broker parent scopes are required; absent cgroups are unknown, not empty.
+
 1. A trusted host broker acquires one persistent-inode flock before either
    launch's preparation, file writes or namespace setup. It checks native
    `steam-bigpicture.scope` and the Desktop Steam cgroup, plus unknown Steam
@@ -184,14 +190,22 @@ The lock also cannot prevent another app editing already-shared directories.
   launch commands. Requires explicit exact resolved root approvals, retains
   spaces and detects ambiguity. Unsupported VDF syntax fails explicitly.
 - [lease.py](lease.py): cooperating-supervisor flock/marker model. Its scope
-  detector is injected, **not implemented against RP6 systemd/proc/cgroups**.
+  detector remains injected; `scope_state.py` supplies a cgroup-v2 reader,
+  but real RP6 scope creation and native launcher interception are not implemented.
   Recovery is a model operation, not a device cleanup utility.
 - [test_poc.py](test_poc.py): 14 tests including two independent competing Python
   processes, a killed winner, retained crash marker, simulated surviving child
   scope, VDF errors, missing libraries, cycles, external links and unchanged
   fixture data/metadata (excluding read access times).
 
-Validation on 2026-10-02: all 14 POC tests, `python3 tests/docs.py`, and
+Additional [scope](test_scope_state.py) and [lease-file](test_lease_files.py)
+tests bring the focused total to 29. Run all with
+`python3 -m unittest discover -s experiments/steam-lxc -p 'test_*.py' -v`.
+The hardened lease tests need ordinary host UID metadata; a sandbox mapping
+root-owned `/tmp` to overflow UID65534 correctly fails the ownership guard.
+All 29 pass outside that sandbox using disposable fixtures.
+
+Validation on 2026-10-02: the original 14 POC tests, `python3 tests/docs.py`, and
 `bash tests/check.sh` passed. The full source suite initially hit the sandbox
 Unix-socket restriction in `tests/lxc-session.py`; its unrestricted local rerun
 passed. `git diff --check` passed. No upstream test suites or device tests ran.
