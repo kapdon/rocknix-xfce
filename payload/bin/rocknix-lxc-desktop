@@ -19,9 +19,11 @@ FEX_FILES = (('/usr/bin/FEX', 'fex-bin', 'bin/FEX'),
              ('/usr/lib/libfmt.so.12', 'fex-fmt', 'lib/libfmt.so.12'))
 NATIVE_LIBS = ('libvulkan_freedreno.so', 'libdrm.so.2',
                'libdisplay-info.so.4', 'libwayland-client.so.0')
+NATIVE_GRAPHICS = ('libEGL_mesa.so.0', 'libGLX_mesa.so.0', 'libgbm.so.1')
 STAGES = ('rootfs', 'home', 'control', 'wayland', 'pulse', 'render', 'decoder', 'fex-arch',
           *(name for _, name, _ in FEX_FILES), *SHARED,
-          'native-vulkan.json', *('native-' + name for name in NATIVE_LIBS))
+          'native-vulkan.json', 'native-egl.json', 'native-msm_dri.so',
+          *('native-' + name for name in (*NATIVE_LIBS, *NATIVE_GRAPHICS)))
 
 
 def fex_host_file(source):
@@ -101,12 +103,20 @@ class DesktopMounts:
         if not os.path.lexists(selection):
             return []
         mode = fex_host_file(selection).read_text().strip()
-        if mode != 'vulkan' or self.profile['model'] != PROFILE['RP6']:
+        if mode not in ('vulkan', 'graphics') or self.profile['model'] != PROFILE['RP6']:
             raise RuntimeError('unsupported native provider selection')
         entries = []
-        for name in NATIVE_LIBS:
-            source = fex_host_file('/usr/lib/' + name)
-            if source.parent != Path('/usr/lib'):
+        files = [(name, '/usr/lib/' + name, 'lib/' + name) for name in NATIVE_LIBS]
+        if mode == 'graphics':
+            gallium = list(Path('/usr/lib').glob('libgallium-*.so'))
+            if len(gallium) != 1 or not re.fullmatch(r'libgallium-[0-9]+(?:\.[0-9]+)+\.so', gallium[0].name):
+                raise RuntimeError('ambiguous native Mesa Gallium family')
+            files += [(name, '/usr/lib/' + name, 'lib/' + name)
+                      for name in (*NATIVE_GRAPHICS, gallium[0].name)]
+            files.append(('msm_dri.so', '/usr/lib/dri/msm_dri.so', 'dri/msm_dri.so'))
+        for name, native_path, destination in files:
+            source = fex_host_file(native_path)
+            if source.parent not in (Path('/usr/lib'), Path('/usr/lib/dri')):
                 raise RuntimeError('native provider escaped the firmware library directory')
             # Do not accept ARM32 providers or import the host loader/libc.
             with source.open('rb') as stream:
@@ -115,7 +125,7 @@ class DesktopMounts:
                 raise RuntimeError('native provider is not little-endian ARM64 ELF')
             target = self.bind(source, 'native-' + name)
             subprocess.run(['/usr/bin/mount', '-o', 'remount,bind,ro,nosuid,nodev', str(target)], check=True)
-            entries.append(f'lxc.mount.entry = {target} run/rocknix-native/lib/{name} none bind,ro,nosuid,nodev,create=file 0 0')
+            entries.append(f'lxc.mount.entry = {target} run/rocknix-native/{destination} none bind,ro,nosuid,nodev,create=file 0 0')
         native_manifest = fex_host_file('/usr/share/vulkan/icd.d/freedreno_icd.aarch64.json')
         data = json.loads(native_manifest.read_text())
         api_version = data['ICD']['api_version']
@@ -129,7 +139,16 @@ class DesktopMounts:
         entries.append(f'lxc.mount.entry = {manifest} run/rocknix-native/vulkan.json none bind,ro,nosuid,nodev,create=file 0 0')
         self.native_environment = ('VK_DRIVER_FILES=/run/rocknix-native/vulkan.json\n'
                                    'LD_LIBRARY_PATH=/run/rocknix-native/lib\n')
-        print('Experimental native Vulkan selected; provider load failures are fatal to the consumer.', flush=True)
+        if mode == 'graphics':
+            egl = self.directory / 'native-egl.json'
+            egl.write_text(json.dumps({'file_format_version': '1.0.0', 'ICD': {
+                'library_path': '/run/rocknix-native/lib/libEGL_mesa.so.0'}}) + '\n')
+            egl.chmod(0o644)
+            entries.append(f'lxc.mount.entry = {egl} run/rocknix-native/egl.json none bind,ro,nosuid,nodev,create=file 0 0')
+            self.native_environment += ('__EGL_VENDOR_LIBRARY_FILENAMES=/run/rocknix-native/egl.json\n'
+                                        '__GLX_VENDOR_LIBRARY_NAME=mesa\n'
+                                        'LIBGL_DRIVERS_PATH=/run/rocknix-native/dri\n')
+        print(f'Experimental native {mode} selected; provider load failures are fatal to the consumer.', flush=True)
         return entries
 
     def tool(self, name, *args):
@@ -230,7 +249,8 @@ class DesktopMounts:
         if directory.exists():
             mounts = {line.split()[4] for line in Path('/proc/self/mountinfo').read_text().splitlines()}
             for path in directory.iterdir():
-                if path.name not in STAGES or str(path) in mounts:
+                native_gallium = re.fullmatch(r'native-libgallium-[0-9]+(?:\.[0-9]+)+\.so', path.name)
+                if (path.name not in STAGES and not native_gallium) or str(path) in mounts:
                     raise RuntimeError('unexpected or still-mounted desktop staging path')
                 info = path.lstat()
                 if info.st_uid != 0:
