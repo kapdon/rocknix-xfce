@@ -174,7 +174,7 @@ with tempfile.TemporaryDirectory() as temporary:
 install_source = (repo / 'build-support/trash/install-image.py').read_text()
 assert "'--no-remove', '--no-install-recommends', 'install'" in install_source
 rootfs_docker = (repo / 'Dockerfile.rootfs').read_text()
-assert 'RUN --network=none --mount=from=trash-packages' in rootfs_docker
+assert 'RUN --network=none --mount=from=trash-package-inputs' in rootfs_docker
 assert rootfs_docker.index('sudo python3') < rootfs_docker.index('python3 /tmp/trash-tools/check-packages.py')
 assert "'gt', wanted" in install_source
 assert '--allow-downgrades' not in install_source

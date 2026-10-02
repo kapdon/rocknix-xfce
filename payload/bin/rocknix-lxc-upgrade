@@ -181,6 +181,23 @@ def atomic(path, data, mode=0o644):
 
 def extract(bundle, expected, target):
     """Extract trusted host components, never an incoming replacement rootfs."""
+    if bundle.suffix == '.json':
+        with bundle.open('rb') as stream:
+            if hashlib.file_digest(stream, 'sha256').hexdigest() != expected:
+                raise RuntimeError('component manifest checksum mismatch')
+        components = runpy.run_path(str(helper_path('rocknix-components')))
+        value = components['release'](json.loads(bundle.read_text()))
+        files = components['materialize'](value, bundle.parent / 'components',
+                                          'kapdon/rocknix-desktop', 'update')
+        assembled = target / 'components-candidate'
+        components['assemble'](value, files, assembled, 'update')
+        # The union payload is streamed through mapped LXC later. Do not copy
+        # the staged guest files onto the installed writable Debian filesystem.
+        shutil.rmtree(assembled / 'rootfs')
+        for source in assembled.iterdir():
+            source.rename(target / source.name)
+        assembled.rmdir()
+        return validate_candidate(target)
     with bundle.open('rb') as stream:
         if hashlib.file_digest(stream, 'sha256').hexdigest() != expected:
             raise RuntimeError('bundle checksum mismatch')
@@ -218,6 +235,10 @@ def extract(bundle, expected, target):
             # sandboxed tools tree. No file may be extracted below a link.
             check_staging_space(target, selected)
             archive.extractall(target, members=selected, filter='fully_trusted')
+    return validate_candidate(target)
+
+
+def validate_candidate(target):
     safe_directory(target / 'payload')
     safe_directory(target / 'host-tools')
     if not (target / 'payload/bin/rocknix-desktop-paths').is_file():

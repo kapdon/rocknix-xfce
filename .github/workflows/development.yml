@@ -1,6 +1,11 @@
-name: Development bundle
+name: Development components
 on:
   workflow_dispatch:
+    inputs:
+      benchmark:
+        description: 'Test this branch and publish reusable components without updating the development release'
+        type: boolean
+        default: false
 permissions:
   contents: write
 concurrency:
@@ -8,64 +13,53 @@ concurrency:
   cancel-in-progress: false
 jobs:
   publish:
-    if: github.ref == 'refs/heads/dev'
+    if: github.ref == 'refs/heads/dev' || inputs.benchmark
     runs-on: ubuntu-24.04-arm
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
+      - name: Resolve published components before Docker setup
+        id: components
+        run: python3 scripts/build-components.py --repository "$GITHUB_REPOSITORY" --plan
       - name: Install archive ownership support
         run: sudo apt-get update && sudo apt-get install -y fakeroot
       - name: Check source
         run: bash tests/check.sh
-      - name: Set up cached builder
+      - name: Set up builder only for missing compiled components
+        if: steps.components.outputs.needs_docker == 'true'
         uses: docker/setup-buildx-action@v3
-      - name: Build mount-aware Debian packages on native ARM64
-        uses: docker/build-push-action@v6
+      - name: Expose BuildKit cache service to the component builder
+        if: steps.components.outputs.needs_docker == 'true'
+        uses: actions/github-script@v7
         with:
-          context: build-support/trash
-          file: build-support/trash/Dockerfile.packages
-          target: artifact
-          platforms: linux/arm64
-          outputs: type=local,dest=build/trash-packages
-          cache-from: type=gha,scope=rocknix-trash-arm64
-          cache-to: type=gha,scope=rocknix-trash-arm64,mode=max
-      - name: Build upstream touchscreen launcher
-        uses: docker/build-push-action@v6
+          script: |
+            for (const name of ['ACTIONS_RUNTIME_TOKEN', 'ACTIONS_RESULTS_URL', 'ACTIONS_CACHE_URL']) {
+              if (process.env[name]) {
+                if (name.endsWith('TOKEN')) core.setSecret(process.env[name]);
+                core.exportVariable(name, process.env[name]);
+              }
+            }
+      - name: Build only missing components
+        run: python3 scripts/build-components.py --repository "$GITHUB_REPOSITORY"
+      - name: Publish benchmark components without advancing development
+        if: inputs.benchmark
+        run: python3 scripts/publish-components.py --repository "$GITHUB_REPOSITORY" --components-only
+      - name: Publish immutable components and rolling manifest
+        if: ${{ !inputs.benchmark }}
+        run: python3 scripts/publish-components.py --repository "$GITHUB_REPOSITORY"
+      - name: Record the published changelog on dev
+        if: ${{ !inputs.benchmark }}
+        run: python3 scripts/record-development-changelog.py --repository "$GITHUB_REPOSITORY" --revision "$GITHUB_SHA"
+      - name: Record component timings
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          context: .
-          file: build-support/fuzzel/Dockerfile
-          target: artifact
-          platforms: linux/arm64
-          outputs: type=local,dest=build/fuzzel
-          cache-from: type=gha,scope=rocknix-fuzzel-arm64
-          cache-to: type=gha,scope=rocknix-fuzzel-arm64,mode=max
-      # Populate this builder from the cross-run cache. build-rootfs.sh uses
-      # the same builder, so its build/load reuses these layers locally.
-      - name: Cache ARM64 runtime layers
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: Dockerfile.rootfs
-          platforms: linux/arm64
-          build-contexts: |
-            trash-packages=./build/trash-packages
-            fuzzel-artifacts=./build/fuzzel
-          outputs: type=cacheonly
-          cache-from: type=gha,scope=rocknix-desktop-arm64
-          cache-to: type=gha,scope=rocknix-desktop-arm64,mode=max
-      - name: Cache trusted ARM64 host tools
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: build-support/lxc/Dockerfile.host-tools
-          platforms: linux/arm64
-          outputs: type=cacheonly
-          cache-from: type=gha,scope=rocknix-host-tools-arm64
-          cache-to: type=gha,scope=rocknix-host-tools-arm64,mode=max
-      - name: Build ARM64 runtime
-        env:
-          ROCKNIX_TRASH_PACKAGES_DIR: ${{ github.workspace }}/build/trash-packages
-        run: bash build-rootfs.sh
-      - name: Publish rolling bundle
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: bash scripts/publish-development.sh
+          name: component-build-timings
+          path: |
+            dist/components/plan.json
+            dist/components/timings.json
+            dist/components/release.json
+            dist/components/development-notes.md
+            dist/components/CHANGELOG.md
+          if-no-files-found: ignore

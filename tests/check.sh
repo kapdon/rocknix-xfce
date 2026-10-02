@@ -145,6 +145,7 @@ bash tests/persistence.sh
 bash tests/upgrade.sh
 bash tests/release-selection.sh
 bash tests/release-publication.sh
+python3 tests/development-changelog.py
 bash tests/installer-flow.sh
 python3 tests/installer-command.py
 python3 tests/session-lifecycle.py
@@ -158,4 +159,6 @@ python3 tests/tools-metadata.py
 python3 tests/keyboard-layout.py
 python3 tests/helper-sandbox.py
 python3 tests/package-rootfs.py
+fakeroot -- python3 tests/components.py
+python3 tests/component-publication.py
 python3 tests/network-helper.py
