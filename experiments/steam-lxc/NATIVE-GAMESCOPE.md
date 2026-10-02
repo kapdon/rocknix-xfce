@@ -2,6 +2,11 @@
 
 ## Conclusion
 
+**Follow-up:** the LXC chooser is now fixed and device-tested. Native ARM64 Steam
+Browse still fails because its fallback calls an unimplemented client method;
+the portal-only hypothesis below was insufficient. See
+[file chooser findings](FILE-CHOOSER.md) for the updated evidence and cleanup.
+
 **Feasible and demonstrated for Steam's desktop UI.** The LXC desktop can stay
 running while host-native gamescope presents host-native Steam as another window.
 Steam loaded the existing account/library, including installed Satisfactory, and

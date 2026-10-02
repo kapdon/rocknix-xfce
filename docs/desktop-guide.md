@@ -61,6 +61,26 @@ layout. Keyboard visibility changes the usable area, so a utility can switch
 between floating and tabbed layouts as space changes. Hide the keyboard if the
 standard network editor's Save/Cancel controls are difficult to reach.
 
+## File chooser
+
+Portal-aware LXC applications use the GTK file chooser. The image includes
+`xdg-desktop-portal` and `xdg-desktop-portal-gtk`; the Desktop session selects the
+ROCKNIX backend configuration and exports its Wayland environment before starting
+the private session bus. No host bus connection is needed.
+
+Retained containers keep their installed packages. If upgrading an older
+container, install the missing packages from its terminal:
+
+```sh
+sudo apt-get update
+sudo apt-get install --no-install-recommends xdg-desktop-portal xdg-desktop-portal-gtk
+```
+
+After applying the updated Desktop session/configuration, exit Desktop and enter
+again so D-Bus activation inherits the correct environment. Installing these
+packages does not enable the unimplemented Browse function in the tested native
+ARM64 Steam client; see the [RP6 file chooser findings](../experiments/steam-lxc/FILE-CHOOSER.md).
+
 ## Display settings
 
 Settings → Display settings previews an advertised resolution/refresh rate or

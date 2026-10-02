@@ -24,13 +24,16 @@ with tempfile.TemporaryDirectory(prefix='rocknix-session-test-') as directory:
     identity.write_text('#!/bin/sh\ncase "$1" in -u) echo 1000;; -un) echo rocknix;; *) exit 1;; esac\n')
     identity.chmod(0o755)
     client = mock / 'session-client'
-    client.write_text('#!/bin/sh\ntest "$WAYLAND_DISPLAY" = wayland-1\ntest -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"\n')
+    client.write_text('#!/bin/sh\nset -e\ntest "$WAYLAND_DISPLAY" = wayland-1\n'
+                      'test -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"\n'
+                      'test "$XDG_CURRENT_DESKTOP" = ROCKNIX\ntest "$GDK_BACKEND" = wayland\n')
     client.chmod(0o755)
     script = root / 'session'
     script.write_text(source.replace('/run/rocknix-desktop/control', str(fifo)).replace(
         '/usr/bin/dbus-run-session -- /usr/local/bin/rocknix-sway-session', str(client)))
     env = dict(os.environ, PATH=str(mock) + ':' + os.environ['PATH'],
-               WAYLAND_DISPLAY=str(endpoint), XDG_RUNTIME_DIR=str(runtime))
+               WAYLAND_DISPLAY=str(endpoint), XDG_RUNTIME_DIR=str(runtime),
+               XDG_CURRENT_DESKTOP='gamescope', GDK_BACKEND='x11')
     for _ in range(2):
         subprocess.run(['bash', str(script)], env=env, check=True)
         assert (runtime / 'wayland-1').is_symlink()

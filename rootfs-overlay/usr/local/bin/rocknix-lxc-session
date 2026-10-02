@@ -11,4 +11,8 @@ set -Eeuo pipefail
 # bridge socket, but expose it through this user's private runtime directory.
 ln -sfn -- "$WAYLAND_DISPLAY" "${XDG_RUNTIME_DIR:?}/wayland-1"
 export WAYLAND_DISPLAY=wayland-1
+# Set these before creating the bus so activated GTK portals inherit the
+# working Wayland endpoint and select our packaged file-chooser backend.
+export XDG_CURRENT_DESKTOP=ROCKNIX
+export GDK_BACKEND=wayland
 exec /usr/bin/dbus-run-session -- /usr/local/bin/rocknix-sway-session

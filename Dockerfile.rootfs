@@ -85,6 +85,8 @@ RUN printf '#!/bin/sh\nexit 101\n' >/usr/sbin/policy-rc.d \
        bash \
        ca-certificates \
        dbus \
+       xdg-desktop-portal \
+       xdg-desktop-portal-gtk \
        desktop-file-utils \
        fonts-dejavu-core \
        fonts-liberation \
