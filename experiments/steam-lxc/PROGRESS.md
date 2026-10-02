@@ -60,3 +60,31 @@ The user identified the existing local credential file. It contains username
 and password only, with no target address; values were not logged. Read-only
 NetBird inventory found no peer named RP6, ROCKNIX or Retroid. Requested only the
 missing host/IP or address-file location. No device connection has been made.
+
+## Installed-state continuation
+
+The missing-endpoint blocker above is resolved. Reused a previously verified RP6
+SSH helper and the existing local credentials for read-only collection. No device
+writes or Steam/game launches occurred; existing Desktop applications were left
+running. INSTALLED.md records sanitized evidence; raw private artifacts are not
+committed.
+
+Confirmed firmware 9fd38fa / installed Desktop 222bbb4 with Xwayland; actual
+Steam client root and two library paths; one library is a bind alias; foreign
+UID65534 runtime and UID1001 compatibility-tool content. A uniform root-owner
+idmap cannot be claimed to support all updates. Revised design retains foreign
+runtime bytes read-only initially with native maintenance as a hypothesis to test.
+
+Fixed static ELF evidence parsing for the device's non-GNU row format. A bounded
+96-object candidate walk exhausted its queue with candidates for all parsed
+DT_NEEDED names; it is not an actual loader or sandbox test. Three targeted parser
+tests bring the focused total to 32. No production runtime changes are justified
+before disposable RP6 mapping/runtime tests and a supported native gate.
+
+Final checks: all 32 focused tests pass with ordinary host UID metadata;
+repository documentation and whitespace checks pass. The revised report and
+requirement audit cover the local-phase deliverables. No runtime payload changed,
+so no image build or unchanged upstream suites were run. The next experimental
+step requires explicit authorization for stage-1 disposable device tests.
+Local-phase completion does not establish Steam support, update safety or native
+round trips. No device changes, pushes, publication or merges occurred.

@@ -7,16 +7,16 @@ original request without treating green fixtures as hardware evidence.
 | --- | --- | --- |
 | Dedicated worktree, correct LXC base, preserve other work | Branch `codex/steam-lxc-reuse`; `RESEARCH.md` records fetch/base `c1a1aec`; changes restricted to `experiments/steam-lxc` | Established locally; no primary-checkout edits, pushes or publication. |
 | Research before POC | Initial research checkpoint saved before discovery/lease code; pinned `sources.json` and local commit sequence | Established for source-level findings. |
-| Exact upstream source and launch/dependency map | Installer, three launch scripts, FEX config/package and Steam package pinned by commit/blob; README assessment | Source evidence established; installed RP6 versions, ELF closure and external libraries unknown. |
+| Exact upstream source and launch/dependency map | Installer, three launch scripts, FEX config/package and Steam package pinned by commit/blob; README assessment | Source evidence established; installed revisions and static ABI candidates now recorded in INSTALLED.md; actual loader/runtime behavior unverified. |
 | Maximum practical component reuse | README table covers client, all library data, tools, runtimes, prefixes, caches, config/account state, saves and FEX | Conditional design established; per-title/installed compatibility unresolved. |
-| Narrow storage paths and links | `discovery.py`, discovery fixtures, README path map | Offline behavior tested; actual topology, removable filesystems and native symlink targets require inventory. |
-| Preserve UID/GID and metadata | Existing LXC idmap implementation inspected; no real data writes; fixture no-mutation checks | Actual mixed owners, ACLs, hardlinks and filesystem idmap behavior unverified. No chown workaround proposed. |
-| CPU/graphics/audio/input/nested runtime | Source map identifies native ARM64 client, FEX route, provider JSON, private endpoints, missing base X11 and controller gap | Concrete integration requirements recorded; installed ABI, pressure-vessel and RP6 behavior not established. |
-| Host/container exclusion, races, crashes, children | `lease.py`, `scope_state.py`, 19 exclusion/file/cgroup tests within 29 total; `EXCLUSION.md` | Local mechanisms tested; full Desktop lifetime chosen for host containment. Native interception, retained scope provisioning and cleanup adapter not implemented. |
-| Local POCs and justified implementation | Discovery planner, cgroup evidence reader, hardened lease, all fixture/process tests | 29 focused tests pass. No production entrypoint or mount mutation justified without installed inventory. |
-| Relevant build/testing | Initial full `tests/check.sh` passed; current 29 POC tests and docs checks passed; whitespace checks | No image/package build needed: changes are experiment/docs only, not in runtime payload. No claim of ARM execution. |
-| Staged RP6 validation/recovery | `VALIDATION.md` stages 0–4, per-title criteria and rollback; `EXCLUSION.md` adds containment gate | Plan prepared; no device stages executed. |
-| Final review, limitations, exact next steps | This audit, `PROGRESS.md`, README limitations and fallback | Reviewed current sources/tests; installed-state portion remains incomplete. Goal remains active. |
+| Narrow storage paths and links | `discovery.py`, discovery fixtures, README path map | Offline behavior tested; current two-library alias topology inventoried; nested links and future removable filesystems remain gates. |
+| Preserve UID/GID and metadata | Existing LXC idmap implementation inspected; no real data writes; fixture no-mutation checks | Actual mixed owners established; ACLs, hardlinks and filesystem idmap behavior remain unverified. No chown workaround proposed. |
+| CPU/graphics/audio/input/nested runtime | Source map identifies native ARM64 client, FEX route, provider JSON, private endpoints, missing base X11, installed Xwayland and controller gap | Concrete integration requirements recorded; static ABI candidates inventoried; runtime loading, pressure-vessel and Steam behavior not established. |
+| Host/container exclusion, races, crashes, children | `lease.py`, `scope_state.py`, 19 exclusion/file/cgroup tests within 32 total; `EXCLUSION.md` | Local mechanisms tested; full Desktop lifetime chosen for host containment. Native interception, retained scope provisioning and cleanup adapter not implemented. |
+| Local POCs and justified implementation | Discovery planner, cgroup evidence reader, hardened lease, all fixture/process tests | 32 focused tests pass. Installed mixed-owner/update and native-gating risks preclude a production entrypoint. |
+| Relevant build/testing | Initial full `tests/check.sh` passed; current 32 POC tests and docs checks passed; whitespace checks | No image/package build needed: changes are experiment/docs only, not in runtime payload. No claim of ARM execution. |
+| Staged RP6 validation/recovery | `VALIDATION.md` stages 0–4, per-title criteria and rollback; `EXCLUSION.md` adds containment gate | Read-only stage 0 partly executed; stages 1–4 require separate authorization. |
+| Final review, limitations, exact next steps | This audit, `PROGRESS.md`, README limitations and fallback | Reviewed current sources/tests; local deliverables reviewed with installed evidence; hardware qualification remains outstanding. |
 
 ## Review findings addressed
 
@@ -32,19 +32,22 @@ original request without treating green fixtures as hardware evidence.
 - `cgroup.events` descendant population is used, not direct `cgroup.procs` alone.
   Missing collected scopes block recovery instead of being treated as empty.
 
-## Precise external dependency and attempted alternatives
+## Current boundary and exact next action
 
-The user supplied the location of existing credentials; that file has no host
-address. Read-only NetBird inventory has no RP6/ROCKNIX/Retroid-named peer. No
-current RP6 endpoint or offline installed inventory is identified yet. A fresh pinned upstream source checkout, current project source,
-separate Xwayland branch inspection, offline symlink/VDF fixtures and independent
-process/cgroup-interface tests provided useful local evidence but cannot identify
-the user's current downloaded binaries, library topology, ownership or saves.
-No credential guessing, device launch, Steam-data writes or deployment occurred.
+Existing credentials and a previously verified SSH connection enabled read-only
+RP6 inventory. The earlier missing-endpoint blocker is resolved. INSTALLED.md
+records the installed firmware/Desktop revisions, library aliases, mixed owners,
+static ABI candidates and active container ancestor. Raw inventory stays private.
 
-Minimum next input: current RP6 SSH host/user/port using existing authorized
-credentials, or a private offline inventory path. Read-only stage 0 can then
-settle installed-state questions and justify a specific local integration patch.
-Do not request device-write approval merely to collect that inventory. After the
-adapter is concrete and locally tested, request authorization for the exact
-stage-1 disposable device tests and subsequent backed-up Steam experiments.
+A production launcher is not justified by file discovery: native interception is
+absent, mixed-owner runtime/tool updates cannot be promised by one idmap, and
+nested runtime execution is untested. The local POCs establish parsing and
+coordination primitives only. No runtime payload changed or image build is needed.
+
+Next, request stage-1 authorization for disposable device ownership/idmap and
+runtime-namespace qualification, scheduled when the active Desktop work can be
+stopped. Do not touch real Steam data or launch Steam/games under that permission.
+After those results, finish the specific native-gate/mount adapter locally before
+seeking stage-2 backed-up client-launch authorization. Per-title saves, updates
+and native round trips remain separate acceptance gates, with rollback in
+VALIDATION.md. No pushes, publication or merges are authorized.

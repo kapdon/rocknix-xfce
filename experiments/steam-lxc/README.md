@@ -3,8 +3,8 @@
 **Conclusion: credible, conditional reuse; not ready for a production launcher.**
 The best path is the existing ARM64 Steam client plus its existing libraries,
 Proton and runtimes, presented at the same absolute paths inside LXC. The main
-blockers are executable/runtime compatibility and launch coordination, not disk
-space. `/storage/Steam` alone does not cover the upstream installation.
+blockers are mixed-owner writable updates, runtime compatibility and launch
+coordination. `/storage/Steam` alone does not cover the upstream installation.
 
 Research was recorded before coding in [RESEARCH.md](RESEARCH.md). This branch
 is `codex/steam-lxc-reuse`, based on verified remote `dev` at
@@ -25,11 +25,12 @@ is `codex/steam-lxc-reuse`, based on verified remote `dev` at
 - **Historical evidence:** project docs describe RP6 Desktop and native FEX
   behavior; none establishes Steam-in-LXC or current-device round-trip safety.
   This investigation did not collect or reinterpret old screenshots as proof.
-- **Local results:** 29 disposable-fixture/process tests pass. No actual LXC
+- **Local results:** 32 disposable-fixture/process tests pass. No actual LXC
   mounts, ARM execution, Steam login, game, update, or native round trip tested.
-- **Unknown installed state:** firmware, client build, all configured libraries,
-  actual symlink targets, native owners, saves and runtime ELF dependencies.
-  Source defaults are not a substitute for a device inventory.
+- **Current read-only RP6 evidence:** [INSTALLED.md](INSTALLED.md) records actual
+  firmware/Desktop revisions, both library paths, mixed ownership, installed
+  tools and static dependency candidates. No Steam was launched. Writable updates,
+  actual guest loading, nested runtimes and per-title round trips remain unknown.
 
 ## Reuse assessment
 
@@ -58,7 +59,9 @@ Minimum added software is a guest X11 path and any missing ARM64 client ABI
 libraries, plus small path/provider/launch adapters and host coordination.
 Current base lacks X11. The separate `codex/host-library-reuse` branch has guest
 Xwayland work (`85e29c8` plus fixes) worth reviewing when integrated into dev.
-Do not copy its ongoing checkout or call it deployed. Keep Debian loader/libc;
+Read-only inventory now confirms installed Desktop `222bbb4` includes Xwayland;
+that does not change this branch's base. Do not copy its ongoing checkout.
+Keep Debian loader/libc;
 resolve missing libraries individually rather than mount host `/usr/lib`.
 No second client, game library, Proton download or FEX root is inherently
 required. Exact additional package count and bytes remain unmeasured.
@@ -70,7 +73,7 @@ the existing private mount namespace; keep the managed host tree outside LXC.
 
 | Native source | Guest path | Access / reason |
 | --- | --- | --- |
-| Resolved client root, source default `/storage/games-internal/roms/steam` | Same absolute path | RW idmapped; covers client, updates, primary library, Proton, caches and most state. |
+| Resolved client root, source default `/storage/games-internal/roms/steam` | Same absolute path | Candidate root-owner idmap for mutable state; installed foreign-owner runtime/tool subtrees remain an update gate. |
 | Each resolved `libraryfolders.vdf` library | Same absolute path | RW idmapped, one approved root per library; never mount its disk or `/storage` wholesale. |
 | Alias `/storage/.local/share/Steam` | Same alias to client root | Guest-only link under private parent. Also preserve `/storage/Steam` if actually configured. |
 | `/storage/roms/steam` or another configured library alias | Same alias or exact bind | Resolve real device mount/symlink first; merged/removable storage can differ. |
@@ -140,6 +143,9 @@ writes remain native UID/GID0. Verify creates, renames, lock files and modes on
 the actual filesystem. Native1000 and mixed ownership need distinct approved
 mapping/ACL designs; a single mapping cannot collapse two native owners into
 one guest owner while preserving both. Fail closed instead of chown/chmod -R.
+The [installed scan](INSTALLED.md) found native65534 runtimes and native1001
+custom-tool content. Initially reusing those bytes read-only with native-only
+maintenance is a candidate, not proven full shared-update support.
 Check filesystem idmap support, ACL/xattrs, mount options, hardlinks, free space
 and removable-media behavior. Fixture metadata preservation is not an idmap test.
 Shared executables/config will later be consumed by native Steam, often as root:
@@ -155,8 +161,8 @@ Native Steam must be closed before entering that Desktop session. Retained
 broker parent scopes are required; absent cgroups are unknown, not empty.
 
 1. A trusted host broker acquires one persistent-inode flock before either
-   launch's preparation, file writes or namespace setup. It checks native
-   `steam-bigpicture.scope` and the Desktop Steam cgroup, plus unknown Steam
+   launch's preparation, file writes or namespace setup. It checks
+   retained native and full Desktop parent cgroups, plus unknown Steam
    process trees. Reject with “Close Steam in ROCKNIX/Desktop first.” Unknown or
    failed inspection blocks launch. Do not use `pgrep steam` as the authority.
 2. Put all children in host-owned tracked cgroups before exec. Retain the lock
@@ -199,16 +205,18 @@ The lock also cannot prevent another app editing already-shared directories.
   fixture data/metadata (excluding read access times).
 
 Additional [scope](test_scope_state.py) and [lease-file](test_lease_files.py)
-tests bring the focused total to 29. Run all with
+tests plus [ELF parser fixtures](test_elf_metadata.py) bring the focused total
+to 32. Run all with
 `python3 -m unittest discover -s experiments/steam-lxc -p 'test_*.py' -v`.
 The hardened lease tests need ordinary host UID metadata; a sandbox mapping
 root-owned `/tmp` to overflow UID65534 correctly fails the ownership guard.
-All 29 pass outside that sandbox using disposable fixtures.
+All 32 pass outside that sandbox using disposable fixtures.
 
 Validation on 2026-10-02: the original 14 POC tests, `python3 tests/docs.py`, and
 `bash tests/check.sh` passed. The full source suite initially hit the sandbox
 Unix-socket restriction in `tests/lxc-session.py`; its unrestricted local rerun
-passed. `git diff --check` passed. No upstream test suites or device tests ran.
+passed. `git diff --check` passed. No upstream test suites or device runtime tests ran.
+Read-only device inventory is recorded separately in INSTALLED.md.
 
 Run `python3 experiments/steam-lxc/test_poc.py -v` locally. The planner CLI is:
 `python3 experiments/steam-lxc/discovery.py --snapshot SNAPSHOT --approve-root /storage/games-internal/roms/steam --approve-root /storage/.steam`.

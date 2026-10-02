@@ -1,8 +1,9 @@
 # Staged RP6 validation and recovery
 
-Nothing below has been run on the RP6 in this investigation. Stage 0 requires a
-current device connection; no target or current access was supplied in this chat.
-Read-only inventory is within the research scope. Stages 1 onward change device
+Stage 0 read-only inventory has partially run; see [INSTALLED.md](INSTALLED.md)
+for actual evidence and remaining inspection gaps. No stages 1–4 have run.
+Existing device access is available. Read-only inventory is within research scope.
+Stages 1 onward change device
 state or launch software and require separate explicit authorization. Keep all
 collected account data private; publish only redacted findings and version IDs.
 
@@ -55,12 +56,16 @@ After authorization, keep real Steam stopped and acquire the proposed gate.
 Create a dedicated disposable directory on each relevant filesystem. Through a
 narrow temporary idmapped LXC mount, as guest1000 create/write/fsync/rename/unlink
 files and locks. Check native numeric owner/group and modes, ACL/xattrs, links and
-native access before and after. Try owner0/1000 fixture cases separately. Never
-chown the installed trees. Remove only the test-owned files/mounts after checking
+native access before and after. Try owner0/1000/1001/65534 fixture cases separately,
+including nested mixed-owner
+directories, rename-over and recursive cleanup. Test both immutable-runtime and
+updater behavior on disposable trees; do not infer permission from root visibility.
+Never chown the installed trees. Remove only the test-owned files/mounts after checking
 both tracked cgroups empty. Unsupported idmaps stop shared-write qualification.
 
-Build the actual guest Xwayland integration on this task branch only after its
-source dependencies are settled. Check a native X11 client, private Pulse audio,
+The installed Desktop `222bbb4` already includes Xwayland. For a deployable
+candidate, reconcile that source dependency explicitly rather than reinstalling
+this older task base over it. Check a native X11 client, private Pulse audio,
 render-node Vulkan/OpenGL, and a translated minimal x86 program. Then run the
 installed Steam runtime's requirement checker and disposable nested bubblewrap
 namespace test as guest1000 under the actual LXC policy. Capture stderr, namespace
