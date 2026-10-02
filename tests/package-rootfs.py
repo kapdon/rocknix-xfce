@@ -21,11 +21,13 @@ with tempfile.TemporaryDirectory(prefix="rocknix-package-test-") as temp:
             archive.addfile(item, None if directory else io.BytesIO(data))
         for directory in ("dev", "proc", "run", "sys", "tmp", "etc", "var/lib/service", "storage", "home/rocknix-default"):
             add(directory, directory=True, uid=101 if directory == "var/lib/service" else 0)
-        required = "bwrap setfacl getfacl mount dbus-run-session xdg-dbus-proxy nm-connection-editor lxc-start lxc-stop lxc-info lxc-attach slirp4netns firefox-esr foot fuzzel glmark2-wayland waybar".split()
+        required = "bwrap setfacl getfacl mount dbus-run-session xdg-dbus-proxy nm-connection-editor lxc-start lxc-stop lxc-info lxc-attach slirp4netns firefox-esr foot fuzzel glmark2-wayland waybar Xwayland xdpyinfo".split()
         for name in required:
             add("usr/bin/" + name, b"fixture")
         for name in "wvkbd-rocknix rocknix-launcher rocknix-status rocknix-window-switcher rocknix-sway-session".split():
             add("usr/local/bin/" + name, b"fixture")
+        add("opt/rocknix-xwayland/bin/xwayland-satellite", b"fixture")
+        add("opt/rocknix-xwayland/packages/fixture.deb", b"fixture", 0o644)
         add("opt/ffmpeg-rpi-7.1.5/bin/ffmpeg", b"fixture")
         add("etc/rocknix-desktop-release", b"ROCKNIX_SWAY_RUNTIME=1\nROCKNIX_LXC_RUNTIME=1\n", 0o644)
         add("usr/bin/setuid-fixture", b"fixture", 0o4755)

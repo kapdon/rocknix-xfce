@@ -41,7 +41,7 @@ def allowed(name):
             any(name.startswith(prefix) for prefix in (
                 'usr/share/themes/ROCKNIX/', 'usr/local/share/wvkbd/',
                 'opt/ffmpeg-rpi-7.1.5/', 'opt/rocknix-mpv/',
-                'opt/rocknix-fuzzel/', 'home/rocknix-default/')))
+                'opt/rocknix-fuzzel/', 'opt/rocknix-xwayland/', 'home/rocknix-default/')))
 
 
 def fingerprint(path):

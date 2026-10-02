@@ -359,7 +359,8 @@ def main():
             revision = extract(args.bundle, args.sha256, candidate)
             packages = candidate / 'payload/guest/trash-packages.tar'
             package_updater = candidate / 'payload/guest/update-trash-packages.py'
-            if not packages.is_file() or not package_updater.is_file():
+            x11_packages = candidate / 'payload/guest/xwayland-packages.tar'
+            if not packages.is_file() or not package_updater.is_file() or not x11_packages.is_file():
                 raise RuntimeError('candidate lacks the required guest package update payload')
             api = runpy.run_path(str(candidate / 'payload/bin/rocknix-lxc'))
             if STATE.exists():
@@ -391,15 +392,16 @@ def main():
                 input=(candidate / 'payload/guest/bootstrap-container.sh').read_text())
             if result.returncode:
                 raise RuntimeError('container bootstrap failed: ' + result.stdout + result.stderr)
-            with packages.open('rb') as stream:
-                subprocess.run(runtime.command('lxc-attach', '-P', runtime.configs, '-n', runtime.name,
-                    '--clear-env', '--', '/bin/sh', '-ec', 'cat > /run/desktop-packages.tar'),
-                    stdin=stream, check=True, timeout=120)
-            result = runtime.attach('/usr/bin/unshare', '--net', '/usr/bin/python3', '-',
-                                    '/run/desktop-packages.tar', input=package_updater.read_text(), timeout=300)
-            if result.returncode:
-                raise RuntimeError('container package update failed: ' + result.stdout + result.stderr)
-            print(result.stdout, flush=True)
+            for packages in (packages, x11_packages):
+                with packages.open('rb') as stream:
+                    subprocess.run(runtime.command('lxc-attach', '-P', runtime.configs, '-n', runtime.name,
+                        '--clear-env', '--', '/bin/sh', '-ec', 'cat > /run/desktop-packages.tar'),
+                        stdin=stream, check=True, timeout=120)
+                result = runtime.attach('/usr/bin/unshare', '--net', '/usr/bin/python3', '-',
+                                        '/run/desktop-packages.tar', input=package_updater.read_text(), timeout=300)
+                if result.returncode:
+                    raise RuntimeError('container package update failed: ' + result.stdout + result.stderr)
+                print(result.stdout, flush=True)
             with (candidate / 'desktop-integration.tar.gz').open('rb') as stream:
                 subprocess.run(runtime.command('lxc-attach', '-P', runtime.configs, '-n', runtime.name,
                     '--clear-env', '--', '/bin/sh', '-ec', 'cat > /run/desktop-integration.tar.gz'),

@@ -69,6 +69,25 @@ RUN mkdir /tmp/wvkbd \
 FROM scratch AS trash-package-inputs
 COPY --from=trash-packages /*.deb /*.dsc /*.tar.* /*.buildinfo /*.changes /
 
+FROM --platform=$BUILDPLATFORM debian@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a AS xwayland-builder
+ARG TARGETARCH
+RUN test "${TARGETARCH}" = "arm64" && dpkg --add-architecture arm64 \
+    && apt-get update && apt-get install -y --no-install-recommends \
+       cargo rustc libstd-rust-dev:arm64 gcc-aarch64-linux-gnu libc6-dev-arm64-cross \
+       pkg-config ca-certificates libclang-dev libxcb1-dev:arm64 \
+       libxcb-cursor-dev:arm64 libxkbcommon-dev:arm64 libwayland-dev:arm64
+ADD --checksum=sha256:8b32873d7d740143ce9efa3cfb43c17d0176b89d2e8ffaa497db709f154fc478 \
+    https://github.com/Supreeeme/xwayland-satellite/archive/refs/tags/v0.8.3.tar.gz /tmp/satellite.tar.gz
+RUN mkdir /tmp/satellite && tar -xzf /tmp/satellite.tar.gz --strip-components=1 -C /tmp/satellite
+WORKDIR /tmp/satellite
+ENV CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
+    PKG_CONFIG_ALLOW_CROSS=1 \
+    PKG_CONFIG_LIBDIR=/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/share/pkgconfig
+RUN cargo build --locked --release --target aarch64-unknown-linux-gnu \
+    && aarch64-linux-gnu-strip target/aarch64-unknown-linux-gnu/release/xwayland-satellite \
+    && cargo vendor --locked /tmp/vendor >/tmp/vendor-config.toml \
+    && tar -czf /tmp/vendor.tar.gz -C /tmp vendor vendor-config.toml
+
 FROM debian@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a AS desktop-dependencies
 
 ARG TARGETARCH
@@ -147,6 +166,20 @@ RUN printf '#!/bin/sh\nexit 101\n' >/usr/sbin/policy-rc.d \
     && apt-get install -y --no-install-recommends sudo python3 python3-gi gir1.2-gtk-3.0 systemd systemd-sysv \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+COPY build-support/xwayland/check-packages.py /tmp/check-x11-packages.py
+# Retain signed-APT artifacts for the offline update of existing containers.
+RUN apt-get update && mkdir -p /opt/rocknix-xwayland/packages \
+    && apt-get install -y --download-only --no-install-recommends xwayland x11-xkb-utils x11-utils \
+    && cp /var/cache/apt/archives/*.deb /opt/rocknix-xwayland/packages/ \
+    && python3 /tmp/check-x11-packages.py /opt/rocknix-xwayland/packages \
+    && rm /tmp/check-x11-packages.py \
+    && apt-get install -y --no-install-recommends xwayland x11-xkb-utils x11-utils \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+COPY --from=xwayland-builder /tmp/satellite/target/aarch64-unknown-linux-gnu/release/xwayland-satellite /opt/rocknix-xwayland/bin/xwayland-satellite
+COPY --from=xwayland-builder /tmp/satellite.tar.gz /opt/rocknix-xwayland/source/satellite.tar.gz
+COPY --from=xwayland-builder /tmp/vendor.tar.gz /opt/rocknix-xwayland/source/vendor.tar.gz
+COPY --from=xwayland-builder /tmp/satellite/LICENSE /opt/rocknix-xwayland/LICENSE
 
 COPY build-support/trash/check-packages.py build-support/trash/install-image.py /tmp/trash-tools/
 # A named context supplied by build-rootfs.sh / the ARM64 release workflow.

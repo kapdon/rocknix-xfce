@@ -5,12 +5,12 @@ import sys
 import tarfile
 
 
-def build(directory, output):
+def build(directory, output, tools=None):
     artifacts = sorted(path for path in directory.iterdir() if path.name.endswith(
         ('.deb', '.dsc', '.tar.xz', '.tar.gz', '.changes', '.buildinfo')))
     if not any(path.suffix == '.deb' for path in artifacts):
         raise RuntimeError('native package artifacts missing')
-    tools = Path(__file__).resolve().parents[1] / 'build-support/trash'
+    tools = tools or Path(__file__).resolve().parents[1] / 'build-support/trash'
     artifacts += [tools / name for name in ('check-packages.py', 'install-image.py')]
     if any(path.is_symlink() or not path.is_file() for path in artifacts):
         raise RuntimeError('package inputs must be regular files')
@@ -28,4 +28,4 @@ def build(directory, output):
 
 
 if __name__ == '__main__':
-    build(Path(sys.argv[1]), Path(sys.argv[2]))
+    build(Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3]) if len(sys.argv) > 3 else None)

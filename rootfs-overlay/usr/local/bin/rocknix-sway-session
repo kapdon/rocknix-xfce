@@ -23,6 +23,7 @@ CONTROL_PID=""
 WVKBD_PID=""
 KEYBOARD_CONTROL_PID=""
 METRICS_WATCH_PID=""
+XWAYLAND_PID=""
 
 cleanup() {
   trap - EXIT INT TERM HUP
@@ -31,6 +32,7 @@ cleanup() {
   [ -z "${KEYBOARD_CONTROL_PID}" ] || kill "${KEYBOARD_CONTROL_PID}" 2>/dev/null || true
   [ -z "${WVKBD_PID}" ] || kill "${WVKBD_PID}" 2>/dev/null || true
   [ -z "${METRICS_WATCH_PID}" ] || kill "${METRICS_WATCH_PID}" 2>/dev/null || true
+  [ -z "${XWAYLAND_PID}" ] || kill "${XWAYLAND_PID}" 2>/dev/null || true
   # Never wait for app children such as Thunar. On exit, systemd terminates
   # the entire desktop cgroup with a bounded timeout.
 }
@@ -123,6 +125,24 @@ watch_metrics() {
   while [ "$(metrics_signature)" = "${original}" ]; do sleep 0.25; done
 }
 
+# Own the X11 server in this container; never import the host X11 socket.
+export DISPLAY=:0
+/opt/rocknix-xwayland/bin/xwayland-satellite "${DISPLAY}" -nolisten tcp &
+XWAYLAND_PID=$!
+x11_ready=false
+for iteration in {1..50}; do
+  kill -0 "${XWAYLAND_PID}" 2>/dev/null || break
+  if timeout .2 xdpyinfo -display "${DISPLAY}" >/dev/null 2>&1; then
+    x11_ready=true
+    break
+  fi
+  sleep .1
+done
+if [ "${x11_ready}" != true ]; then
+  printf 'Desktop Xwayland did not become ready\n' >&2
+  exit 1
+fi
+
 signature=$(metrics_signature)
 start_chrome
 watch_metrics "${signature}" &
@@ -139,7 +159,11 @@ CONTROL_PID=$!
 ) &
 
 while :; do
-wait -n "${WAYBAR_PID}" "${CONTROL_PID}" "${WVKBD_PID}" "${KEYBOARD_CONTROL_PID}" "${METRICS_WATCH_PID}"
+wait -n "${XWAYLAND_PID}" "${WAYBAR_PID}" "${CONTROL_PID}" "${WVKBD_PID}" "${KEYBOARD_CONTROL_PID}" "${METRICS_WATCH_PID}"
+if ! kill -0 "${XWAYLAND_PID}" 2>/dev/null; then
+  printf 'Desktop Xwayland exited unexpectedly\n' >&2
+  exit 1
+fi
 if ! kill -0 "${WAYBAR_PID}" 2>/dev/null; then
   printf 'Waybar exited unexpectedly\n' >&2
   exit 1

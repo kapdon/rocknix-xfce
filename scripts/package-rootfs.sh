@@ -30,6 +30,7 @@ for required in \
   usr/bin/firefox-esr usr/bin/foot usr/bin/fuzzel usr/bin/glmark2-wayland usr/bin/waybar \
   usr/local/bin/wvkbd-rocknix usr/local/bin/rocknix-launcher usr/local/bin/rocknix-status \
   usr/local/bin/rocknix-window-switcher usr/local/bin/rocknix-sway-session \
+  usr/bin/Xwayland usr/bin/xdpyinfo opt/rocknix-xwayland/bin/xwayland-satellite \
   opt/ffmpeg-rpi-7.1.5/bin/ffmpeg; do
   [ -x "${TEMP_DIR}/rootfs/${required}" ] || {
     printf 'Built rootfs is missing %s\n' "${required}" >&2; exit 1;
@@ -84,6 +85,12 @@ chown 0:0 "${TEMP_DIR}/payload/guest/rocknix-container-update"
 python3 "${PROJECT_DIR}/scripts/package-trash.py" "${TRASH_PACKAGES_DIR}" \
   "${TEMP_DIR}/payload/guest/trash-packages.tar"
 chown 0:0 "${TEMP_DIR}/payload/guest/trash-packages.tar"
+python3 "${PROJECT_DIR}/scripts/package-trash.py" \
+  "${TEMP_DIR}/rootfs/opt/rocknix-xwayland/packages" \
+  "${TEMP_DIR}/payload/guest/xwayland-packages.tar" "${PROJECT_DIR}/build-support/xwayland"
+chown 0:0 "${TEMP_DIR}/payload/guest/xwayland-packages.tar"
+rm -r "${TEMP_DIR}/rootfs/opt/rocknix-xwayland/packages"
+
 printf 'built=%s\nbase_image=%s\nrootfs_image=%s\narchitecture=arm64\ncommit=%s\n' \
   "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   'debian@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a' \

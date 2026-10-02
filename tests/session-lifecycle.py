@@ -11,7 +11,7 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = (ROOT / 'rootfs-overlay/usr/local/bin/rocknix-sway-session').read_text()
 
-for mode, expected in [('return', 0), ('invalid', 1), ('term', 143), ('waybar', 1), ('keyboard', 1), ('refresh', 0)]:
+for mode, expected in [('return', 0), ('invalid', 1), ('term', 143), ('waybar', 1), ('keyboard', 1), ('refresh', 0), ('xwayland', 1), ('x11-start', 1)]:
     with tempfile.TemporaryDirectory() as directory, tempfile.TemporaryFile() as log:
         home = Path(directory) / 'home'
         home.mkdir()
@@ -40,10 +40,16 @@ for mode, expected in [('return', 0), ('invalid', 1), ('term', 143), ('waybar', 
         script = script.replace('source /usr/local/bin/rocknix-home-integration',
                                 'refresh_storage_links() { :; }')
         script = script.replace('refresh_home_integration /home/rocknix-default "$HOME"', ':')
+        script = script.replace('/opt/rocknix-xwayland/bin/xwayland-satellite', 'satellite')
+        script = script.replace('timeout .2 xdpyinfo', 'xdpyinfo')
+        satellite = 'sleep 0.2; return 1' if mode in ('xwayland', 'x11-start') else 'exec sleep 600'
+        ready = 'return 1' if mode == 'x11-start' else 'return 0'
         bar = 'sleep 0.2; return 1' if mode == 'waybar' else 'exec sleep 600'
         keyboard = 'sleep 0.2; return 1' if mode == 'keyboard' else 'exec sleep 600'
         starts = Path(directory) / 'starts'
-        mocks = (f'waybar() {{ echo bar >>{shlex.quote(str(starts))}; {bar}; }}\n'
+        mocks = (f'satellite() {{ echo x11 >>{shlex.quote(str(starts))}; {satellite}; }}\n'
+                 f'xdpyinfo() {{ {ready}; }}\n'
+                 f'waybar() {{ echo bar >>{shlex.quote(str(starts))}; {bar}; }}\n'
                  f'thunar() {{ echo app >>{shlex.quote(str(starts))}; exec sleep 600; }}\n'
                  f'wvkbd-rocknix() {{ echo "keyboard $*" >>{shlex.quote(str(starts))}; {keyboard}; }}\n')
         proc = subprocess.Popen(['bash', '-c', mocks + script],
@@ -62,6 +68,7 @@ for mode, expected in [('return', 0), ('invalid', 1), ('term', 143), ('waybar', 
                     assert proc.poll() is None, 'refresh killed Desktop session'
                     assert time.monotonic() < deadline, 'UI refresh did not finish'
                     time.sleep(.02)
+                assert starts.read_text().count('x11') == 1, 'refresh restarted Xwayland'
                 assert starts.read_text().count('app') == 1, 'refresh relaunched user apps'
                 keyboards = [line for line in starts.read_text().splitlines() if line.startswith('keyboard ')]
                 assert len(keyboards) == 2 and '--hidden' in keyboards[0] and '--hidden' not in keyboards[1]
