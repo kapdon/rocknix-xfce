@@ -25,7 +25,7 @@ NATIVE_CODECS = ('libavcodec.so.61', 'libavformat.so.61', 'libavutil.so.59',
                  'libswscale.so.8', 'libdav1d.so.7')
 STAGES = ('rootfs', 'home', 'control', 'wayland', 'pulse', 'render', 'decoder', 'fex-arch',
           *(name for _, name, _ in FEX_FILES), *SHARED,
-          'native-vulkan.json', 'native-egl.json', 'native-msm_dri.so',
+          'native-vulkan.json', 'native-egl.json', 'native-msm_dri.so', 'native-dri_gbm.so',
           *('native-' + name for name in (*NATIVE_LIBS, *NATIVE_GRAPHICS, *NATIVE_CODECS)))
 
 
@@ -117,11 +117,12 @@ class DesktopMounts:
             files += [(name, '/usr/lib/' + name, 'lib/' + name)
                       for name in (*NATIVE_GRAPHICS, gallium[0].name)]
             files.append(('msm_dri.so', '/usr/lib/dri/msm_dri.so', 'dri/msm_dri.so'))
+            files.append(('dri_gbm.so', '/usr/lib/gbm/dri_gbm.so', 'gbm/dri_gbm.so'))
         if mode == 'codecs':
             files += [(name, '/usr/lib/' + name, 'codecs/' + name) for name in NATIVE_CODECS]
         for name, native_path, destination in files:
             source = fex_host_file(native_path)
-            if source.parent not in (Path('/usr/lib'), Path('/usr/lib/dri')):
+            if source.parent not in (Path('/usr/lib'), Path('/usr/lib/dri'), Path('/usr/lib/gbm')):
                 raise RuntimeError('native provider escaped the firmware library directory')
             # Do not accept ARM32 providers or import the host loader/libc.
             with source.open('rb') as stream:
@@ -152,7 +153,8 @@ class DesktopMounts:
             entries.append(f'lxc.mount.entry = {egl} run/rocknix-native/egl.json none bind,ro,nosuid,nodev,create=file 0 0')
             self.native_environment += ('__EGL_VENDOR_LIBRARY_FILENAMES=/run/rocknix-native/egl.json\n'
                                         '__GLX_VENDOR_LIBRARY_NAME=mesa\n'
-                                        'LIBGL_DRIVERS_PATH=/run/rocknix-native/dri\n')
+                                        'LIBGL_DRIVERS_PATH=/run/rocknix-native/dri\n'
+                                        'GBM_BACKENDS_PATH=/run/rocknix-native/gbm\n')
         if mode == 'codecs':
             self.native_environment += 'ROCKNIX_NATIVE_CODECS=1\n'
         print(f'Experimental native {mode} selected; provider load failures are fatal to the consumer.', flush=True)
