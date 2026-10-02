@@ -20,10 +20,13 @@ FEX_FILES = (('/usr/bin/FEX', 'fex-bin', 'bin/FEX'),
 NATIVE_LIBS = ('libvulkan_freedreno.so', 'libdrm.so.2',
                'libdisplay-info.so.4', 'libwayland-client.so.0')
 NATIVE_GRAPHICS = ('libEGL_mesa.so.0', 'libGLX_mesa.so.0', 'libgbm.so.1')
+NATIVE_CODECS = ('libavcodec.so.61', 'libavformat.so.61', 'libavutil.so.59',
+                 'libavfilter.so.10', 'libavdevice.so.61', 'libswresample.so.5',
+                 'libswscale.so.8', 'libdav1d.so.7')
 STAGES = ('rootfs', 'home', 'control', 'wayland', 'pulse', 'render', 'decoder', 'fex-arch',
           *(name for _, name, _ in FEX_FILES), *SHARED,
           'native-vulkan.json', 'native-egl.json', 'native-msm_dri.so',
-          *('native-' + name for name in (*NATIVE_LIBS, *NATIVE_GRAPHICS)))
+          *('native-' + name for name in (*NATIVE_LIBS, *NATIVE_GRAPHICS, *NATIVE_CODECS)))
 
 
 def fex_host_file(source):
@@ -103,17 +106,19 @@ class DesktopMounts:
         if not os.path.lexists(selection):
             return []
         mode = fex_host_file(selection).read_text().strip()
-        if mode not in ('vulkan', 'graphics') or self.profile['model'] != PROFILE['RP6']:
+        if mode not in ('vulkan', 'graphics', 'codecs') or self.profile['model'] != PROFILE['RP6']:
             raise RuntimeError('unsupported native provider selection')
         entries = []
         files = [(name, '/usr/lib/' + name, 'lib/' + name) for name in NATIVE_LIBS]
-        if mode == 'graphics':
+        if mode in ('graphics', 'codecs'):
             gallium = list(Path('/usr/lib').glob('libgallium-*.so'))
             if len(gallium) != 1 or not re.fullmatch(r'libgallium-[0-9]+(?:\.[0-9]+)+\.so', gallium[0].name):
                 raise RuntimeError('ambiguous native Mesa Gallium family')
             files += [(name, '/usr/lib/' + name, 'lib/' + name)
                       for name in (*NATIVE_GRAPHICS, gallium[0].name)]
             files.append(('msm_dri.so', '/usr/lib/dri/msm_dri.so', 'dri/msm_dri.so'))
+        if mode == 'codecs':
+            files += [(name, '/usr/lib/' + name, 'codecs/' + name) for name in NATIVE_CODECS]
         for name, native_path, destination in files:
             source = fex_host_file(native_path)
             if source.parent not in (Path('/usr/lib'), Path('/usr/lib/dri')):
@@ -139,7 +144,7 @@ class DesktopMounts:
         entries.append(f'lxc.mount.entry = {manifest} run/rocknix-native/vulkan.json none bind,ro,nosuid,nodev,create=file 0 0')
         self.native_environment = ('VK_DRIVER_FILES=/run/rocknix-native/vulkan.json\n'
                                    'LD_LIBRARY_PATH=/run/rocknix-native/lib\n')
-        if mode == 'graphics':
+        if mode in ('graphics', 'codecs'):
             egl = self.directory / 'native-egl.json'
             egl.write_text(json.dumps({'file_format_version': '1.0.0', 'ICD': {
                 'library_path': '/run/rocknix-native/lib/libEGL_mesa.so.0'}}) + '\n')
@@ -148,6 +153,8 @@ class DesktopMounts:
             self.native_environment += ('__EGL_VENDOR_LIBRARY_FILENAMES=/run/rocknix-native/egl.json\n'
                                         '__GLX_VENDOR_LIBRARY_NAME=mesa\n'
                                         'LIBGL_DRIVERS_PATH=/run/rocknix-native/dri\n')
+        if mode == 'codecs':
+            self.native_environment += 'ROCKNIX_NATIVE_CODECS=1\n'
         print(f'Experimental native {mode} selected; provider load failures are fatal to the consumer.', flush=True)
         return entries
 

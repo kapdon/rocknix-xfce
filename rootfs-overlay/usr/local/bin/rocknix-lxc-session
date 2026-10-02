@@ -7,6 +7,27 @@ set -Eeuo pipefail
 }
 [ -S "${WAYLAND_DISPLAY:?}" ] || { printf 'Wayland endpoint missing\n' >&2; exit 1; }
 [ -p /run/rocknix-desktop/control ] || { printf 'Desktop control endpoint missing\n' >&2; exit 1; }
+# Resolve selected providers with the guest loader before opening the desktop.
+# A firmware ABI mismatch must terminate this session instead of selecting a
+# different provider and claiming that native reuse succeeded.
+if [ "${VK_DRIVER_FILES:-}" = /run/rocknix-native/vulkan.json ]; then
+  provider_path="${LD_LIBRARY_PATH:-}"
+  if [ "${ROCKNIX_NATIVE_CODECS:-}" = 1 ]; then
+    provider_path="/run/rocknix-native/codecs:${provider_path}"
+  fi
+  LD_LIBRARY_PATH="$provider_path" /usr/bin/python3 - <<'PY'
+import ctypes, os
+from pathlib import Path
+libraries = ['/run/rocknix-native/lib/libvulkan_freedreno.so']
+if os.environ.get('__EGL_VENDOR_LIBRARY_FILENAMES'):
+    libraries += ['/run/rocknix-native/lib/' + n for n in
+                  ('libEGL_mesa.so.0', 'libGLX_mesa.so.0', 'libgbm.so.1')]
+if os.environ.get('ROCKNIX_NATIVE_CODECS') == '1':
+    libraries += [str(p) for p in Path('/run/rocknix-native/codecs').iterdir()]
+for library in libraries:
+    ctypes.CDLL(library)
+PY
+fi
 # Some clients use WAYLAND_DISPLAY in lock-file names. Keep the restricted
 # bridge socket, but expose it through this user's private runtime directory.
 ln -sfn -- "$WAYLAND_DISPLAY" "${XDG_RUNTIME_DIR:?}/wayland-1"

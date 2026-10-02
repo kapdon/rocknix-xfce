@@ -1,4 +1,8 @@
 #!/bin/sh
 # Keep the decoder correction local to MPV and preserve the system FFmpeg.
-export LD_LIBRARY_PATH="/opt/rocknix-mpv/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+if [ "${ROCKNIX_NATIVE_CODECS:-}" = 1 ]; then
+  export LD_LIBRARY_PATH="/run/rocknix-native/codecs${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+else
+  export LD_LIBRARY_PATH="/opt/rocknix-mpv/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+fi
 exec /usr/bin/mpv "$@"

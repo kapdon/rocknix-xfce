@@ -5,6 +5,9 @@ set -Eeuo pipefail
 BROWSER_HOME=/home/rocknix/.rocknix-firefox
 PROFILE="${BROWSER_HOME}/profile"
 FFMPEG_LIB=/opt/ffmpeg-rpi-7.1.5/lib
+if [ "${ROCKNIX_NATIVE_CODECS:-}" = 1 ]; then
+  FFMPEG_LIB=/run/rocknix-native/codecs
+fi
 
 mkdir -p "${PROFILE}"
 chmod 0700 "${BROWSER_HOME}" "${PROFILE}"
