@@ -35,7 +35,7 @@
                  satellite: sat_decoration,
 --- a/src/server/event.rs
 +++ b/src/server/event.rs
-@@ -387,6 +387,13 @@
+@@ -387,14 +387,24 @@
  
                  let mut role = data.get::<&mut SurfaceRole>().unwrap();
                  if let SurfaceRole::Toplevel(Some(toplevel)) = &mut *role {
@@ -47,11 +47,28 @@
 +                                | xdg_toplevel::State::TiledTop | xdg_toplevel::State::TiledBottom))
 +                    });
                      let prev_fs = toplevel.fullscreen;
-                     toplevel.fullscreen =
-                         states.contains(&(u32::from(xdg_toplevel::State::Fullscreen) as u8));
+-                    toplevel.fullscreen =
+-                        states.contains(&(u32::from(xdg_toplevel::State::Fullscreen) as u8));
++                    toplevel.fullscreen = states.chunks_exact(4).any(|bytes| {
++                        u32::from_ne_bytes(bytes.try_into().unwrap())
++                            == u32::from(xdg_toplevel::State::Fullscreen)
++                    });
++                    // Reconcile even if our cached state is unchanged: the X
++                    // client may have set a property the compositor rejected.
++                    state.connection.set_fullscreen(
++                        *data.get::<&x::Window>().unwrap(), toplevel.fullscreen,
++                    );
+                     if toplevel.fullscreen != prev_fs {
+-                        state.connection.set_fullscreen(
+-                            *data.get::<&x::Window>().unwrap(),
+-                            toplevel.fullscreen,
+-                        );
+                         if let Some(decorations) = toplevel.decoration.satellite.as_mut() {
+                             decorations.handle_fullscreen(toplevel.fullscreen);
+                         }
 --- a/src/server/tests.rs
 +++ b/src/server/tests.rs
-@@ -3343,3 +3343,22 @@
+@@ -3343,3 +3343,40 @@
  /// See Pointer::handle_event for an explanation.
  #[test]
  fn popup_pointer_motion_workaround() {}
@@ -73,6 +90,24 @@
 +    f.testwl.configure_toplevel(surface, 800, 600, vec![xdg_toplevel::State::Activated]);
 +    f.run();
 +    assert!(f.satellite.constrained_window_dims(window).is_none());
++}
++
++#[test]
++fn reconcile_stale_x11_fullscreen_state() {
++    let (mut f, comp) = TestFixture::new_with_compositor();
++    let window = Window::new(1);
++    let (_, surface) = f.create_toplevel(&comp, window);
++    // Simulate a stale X11 property while the cached Wayland state is false.
++    f.satellite.connection.windows.get_mut(&window).unwrap().fullscreen = true;
++    f.testwl.configure_toplevel(surface, 1920, 953, vec![xdg_toplevel::State::TiledTop]);
++    f.run();
++    assert!(!f.satellite.connection.windows[&window].fullscreen);
++    f.testwl.configure_toplevel(surface, 1920, 1080, vec![xdg_toplevel::State::Fullscreen]);
++    f.run();
++    assert!(f.satellite.connection.windows[&window].fullscreen);
++    f.testwl.configure_toplevel(surface, 1920, 953, vec![xdg_toplevel::State::TiledTop]);
++    f.run();
++    assert!(!f.satellite.connection.windows[&window].fullscreen);
 +}
 --- a/src/xstate/mod.rs
 +++ b/src/xstate/mod.rs
