@@ -158,6 +158,8 @@ with tempfile.TemporaryDirectory(prefix='rocknix-components-test-') as temp:
     selected = lambda profile: {r: allfiles[r] for r in C['PROFILES'][profile]}
     C['assemble'](new, selected('install'), work / 'install', 'install')
     assembled = work / 'install'
+    portal = 'etc/xdg/xdg-desktop-portal/rocknix-portals.conf'
+    assert (assembled / 'rootfs' / portal).read_bytes() == (PROJECT / 'rootfs-overlay' / portal).read_bytes()
     assert (assembled / 'rootfs/etc/ssl/certs/cert-ñ.pem').read_bytes() == b'unicode certificate'
     assert (assembled / 'rootfs/usr/bin/sudo').stat().st_mode & 0o7777 == 0o4755
     assert (assembled / 'rootfs/var/lib/service/data').stat().st_uid == 101
@@ -169,6 +171,7 @@ with tempfile.TemporaryDirectory(prefix='rocknix-components-test-') as temp:
     api = runpy.run_path(str(PROJECT / 'rootfs-overlay/usr/local/bin/rocknix-container-update'))
     baseline = work / 'baseline'
     assert not api['apply'](baseline, work / 'update/desktop-integration.tar.gz')
+    assert (baseline / portal).read_bytes() == (PROJECT / 'rootfs-overlay' / portal).read_bytes()
     assert (baseline / 'opt/rocknix-mpv/lib/real.so').exists()
     assert not api['apply'](baseline, work / 'update/desktop-integration.tar.gz')
     assert (baseline / 'opt/rocknix-mpv/lib/real.so').exists()

@@ -23,6 +23,7 @@ CONFIG = {
     'etc/gtk-3.0/settings.ini', 'etc/gtk-4.0/settings.ini', 'etc/mpv/mpv.conf',
     'etc/xdg/foot/foot.ini', 'etc/xdg/fuzzel/fuzzel.ini',
     'etc/xdg/waybar/config.jsonc', 'etc/xdg/waybar/style.css',
+    'etc/xdg/xdg-desktop-portal/rocknix-portals.conf',
     'etc/systemd/system/rocknix-desktop-session.service',
     'etc/systemd/journald.conf.d/rocknix-container.conf',
 }
