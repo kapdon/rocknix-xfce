@@ -93,16 +93,24 @@ def publish(error=''):
 CONTROL = Path('/run/rocknix-desktop-controller.json')
 CONTROL_PUBLIC = PUBLIC.with_name('controller.json')
 INPUT_STATE = Path('/run/rocknix-desktop-input-state')
+
 PROC = Path('/proc')
 
 
 def focused_game(tree):
-    """Trust native Steam scope membership, never a window title."""
+    """Recognize native Steam or a Gamescope process in our mapped LXC."""
     if tree.get('focused') and tree.get('pid'):
         try:
-            groups = PROC / str(int(tree['pid'])) / 'cgroup'
-            return any(SCOPE in line.split(':', 2)[-1].split('/')
-                       for line in groups.read_text().splitlines())
+            process = PROC / str(int(tree['pid']))
+            groups = [line.split(':', 2)[-1].split('/')
+                      for line in (process / 'cgroup').read_text().splitlines()]
+            if any(SCOPE in group for group in groups):
+                return True
+            # Sway reports the host PID for a Wayland client across PID namespaces.
+            # Check executable + container identity; titles/app IDs are arbitrary.
+            return (any('lxc.payload.rocknix-lxc' in group for group in groups)
+                    and (process / 'uid_map').read_text().split() == ['0', '200000', '65536']
+                    and Path(os.readlink(process / 'exe')).name == 'gamescope')
         except (OSError, ValueError):
             return False
     return any(focused_game(n) for n in tree.get('nodes', []) + tree.get('floating_nodes', []))
@@ -161,17 +169,24 @@ def request(words):
     if words == ['refresh']:
         publish()
         return
+    if words == ['controls-toggle']:
+        current = json.loads(CONTROL_PUBLIC.read_text())['active']
+        if current not in ('desktop', 'game'):
+            raise ValueError('Invalid controller state')
+        request(['controls', 'game' if current == 'desktop' else 'desktop'])
+        return
     if words == ['stop']:
         result = run('systemctl', 'stop', '--no-block', UNIT, check=False)
         if result.returncode and active(UNIT):
             raise ValueError('Could not stop the Steam session')
-    elif len(words) == 2 and words[0] == 'controls' and words[1] in ('auto', 'desktop', 'game'):
+    elif len(words) == 2 and words[0] == 'controls' and words[1] in ('desktop', 'game'):
         if not active('rocknix-desktop.service'):
             raise ValueError('Desktop is no longer running')
         saved = json.loads(CONTROL.read_text())
+        control_profile(saved, words[1])
         saved['mode'] = words[1]
         atomic(CONTROL, saved, 0o600)
-        control_update()
+        atomic(CONTROL_PUBLIC, {'mode': words[1], 'active': words[1]})
     elif len(words) == 2 and words[0] == 'mode' and words[1] in MODES:
         atomic(STATE, {'mode': words[1]}, 0o600)
     elif len(words) == 3 and words[0] == 'launch':
@@ -216,7 +231,7 @@ def recover():
             target.write_text('1' if enabled else '0')
     for name, governor in saved.get('governors', {}).items():
         Path(name).write_text(governor)
-    # Desktop's controller loop owns manual overrides and survives game exit.
+    # Desktop owns the controller selection; game exit must not change it.
     # ExecStopPost has now reaped both the supervisor and native Steam scope.
     state = run('systemctl', 'is-system-running', check=False).stdout.strip()
     if saved['mode'] == 'close' and saved.get('desktop_stopped') and state not in ('stopping', 'offline'):

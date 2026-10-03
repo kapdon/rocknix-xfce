@@ -248,6 +248,26 @@ raise SystemExit(status)
             (p/'cgroup').write_text('0::/system.slice/' + g.UNIT + '\n')
             self.assertFalse(g.focused_game({'focused':True,'pid':123}))
 
+    def test_guest_gamescope_focus_requires_container_and_executable(self):
+        with tempfile.TemporaryDirectory() as tmp,patch.object(g,'PROC',Path(tmp)):
+            process=Path(tmp)/'123';process.mkdir()
+            (process/'exe').symlink_to('/usr/bin/gamescope')
+            (process/'uid_map').write_text('0 200000 65536\n')
+            (process/'cgroup').write_text('0::/rocknix-lxc/lxc.payload.rocknix-lxc/user.slice\n')
+            window={'focused':True,'pid':123,'name':'any title','app_id':'anything'}
+            self.assertTrue(g.focused_game({'nodes':[window]}))
+            self.assertFalse(g.focused_game(dict(window,focused=False)))
+            (process/'exe').unlink();(process/'exe').symlink_to('/usr/bin/other')
+            self.assertFalse(g.focused_game(dict(window,name='gamescope',app_id='gamescope')))
+            (process/'exe').unlink();(process/'exe').symlink_to('/opt/custom/bin/gamescope')
+            (process/'uid_map').write_text('0 0 4294967295\n')
+            self.assertFalse(g.focused_game(window))
+            (process/'uid_map').write_text('0 200000 65536\n')
+            (process/'cgroup').write_text('0::/unrelated/lxc.payload.other\n')
+            self.assertFalse(g.focused_game(window))
+            (process/'cgroup').unlink()
+            self.assertFalse(g.focused_game(window))
+
     def test_native_scope_stops_before_recovery(self):
         for state in ('inactive','failed','active','deactivating',''):
             with tempfile.TemporaryDirectory() as tmp,patch.object(g,'LEASE',Path(tmp)),patch.object(g.time,'sleep'),patch.object(g,'active',return_value=True):
@@ -279,18 +299,22 @@ raise SystemExit(status)
 
     def test_controls_without_game_lease(self):
         with tempfile.TemporaryDirectory() as tmp,patch.object(g,'CONTROL',Path(tmp)/'mode'),patch.object(g,'CONTROL_PUBLIC',Path(tmp)/'public'),patch.object(g,'LEASE',Path(tmp)/'absent'),patch.object(g,'control_profile') as profile,patch.object(g,'active',side_effect=lambda unit:unit=='rocknix-desktop.service'),patch.object(g,'publish'),patch.object(g.subprocess,'run') as sway:
-            saved={'mode':'auto','controller':{'desktop':'desktop','game':'native'}}
+            saved={'mode':'desktop','controller':{'desktop':'desktop','game':'native'}}
             g.atomic(g.CONTROL,saved,0o600)
-            g.atomic(g.CONTROL_PUBLIC,{'mode':'auto','active':'desktop'})
+            g.atomic(g.CONTROL_PUBLIC,{'mode':'desktop','active':'desktop'})
             g.request(['controls','game'])
             self.assertEqual(json.loads(g.CONTROL_PUBLIC.read_text()),{'mode':'game','active':'game'})
             profile.assert_called_once_with(dict(saved,mode='game'),'game')
             profile.reset_mock()
-            # A manual choice survives future ticks without consulting focus.
+            # Manual selection and later polling never consult window focus.
             g.control_update();profile.assert_not_called();sway.assert_not_called()
-            g.request(['controls','desktop'])
+            g.request(['controls-toggle'])
             self.assertEqual(json.loads(g.CONTROL_PUBLIC.read_text())['active'],'desktop')
+            g.request(['controls-toggle'])
+            self.assertEqual(json.loads(g.CONTROL_PUBLIC.read_text())['active'],'game')
             self.assertFalse(g.LEASE.exists())
+            with self.assertRaisesRegex(ValueError,'Invalid games request'):
+                g.request(['controls','auto'])
             with patch.object(g,'active',return_value=False),self.assertRaisesRegex(ValueError,'Desktop'):
                 g.request(['controls','game'])
 

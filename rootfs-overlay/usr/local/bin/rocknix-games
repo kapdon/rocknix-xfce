@@ -40,17 +40,12 @@ def main():
             control = json.loads((BRIDGE / 'controller.json').read_text())
             label = 'Game' if control['active'] == 'game' else 'Desktop'
             print(json.dumps({'text': 'Pad: ' + label,
-                              'tooltip': 'Controller mode: ' + control['mode'] + ' · Tap to change'}))
+                              'tooltip': 'Tap to switch Desktop/Game controls'}))
         except (OSError, ValueError, KeyError):
             print(json.dumps({'text': ''}))
         return
     if sys.argv[1:] == ['controls']:
-        selected = menu('Controller controls', [
-            ('Automatic · follow window focus', 'auto'),
-            ('Desktop controls · pointer and shortcuts', 'desktop'),
-            ('Game controls · native gamepad', 'game'), ('Back', None)])
-        if selected:
-            send('controls', selected)
+        send('controls-toggle')
         return
     send('refresh')
     time.sleep(.3)

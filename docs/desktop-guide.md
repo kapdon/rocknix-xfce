@@ -126,18 +126,18 @@ performance may differ from native WSI-enabled sessions. Nested mode also disabl
 frame generation. Close mode retains ROCKNIX's other per-game settings, including
 its frame-generation choice.
 
-The panel always shows **Pad: Game** or **Pad: Desktop** while Desktop is
-running, including before a game starts. Tap it to choose:
+The panel always shows **Pad: Desktop** or **Pad: Game**, including before a
+game starts. Tap it to switch directly between Desktop mouse/shortcut mappings
+and the native gamepad profile, with no menu. A tap takes manual control; focus
+changes and game launches/exits cannot override your choice.
 
-- **Automatic** (the default for each Desktop session): native gamepad controls
-  when a native Steam/gamescope scope window has focus; Desktop mappings elsewhere.
-- **Desktop controls**: force pointer and Desktop shortcuts regardless of focus.
-- **Game controls**: force the native gamepad profile regardless of focus or how
-  a game was launched. Use this for unrecognized or separately launched games.
+The choice stays selected until you tap again or exit Desktop. Each new Desktop
+session starts with automatic focus detection: Game controls for windows in
+ROCKNIX's native Steam scope (including our nested launch), or a Gamescope
+Wayland window launched inside the mapped LXC; Desktop controls elsewhere.
+Detection checks the focused process, not window titles. Only the InputPlumber
+profile changes; the virtual DualSense stays connected.
 
-Only the InputPlumber profile changes; the virtual DualSense stays connected.
-Manual choices last until changed or Desktop exits, including across Steam game
-launches and exits. Automatic detection is not required for manual switching.
 Switching profiles does not grant a guest application new device access; the game
 must already be able to read a controller, and some games only detect it at startup.
 Exiting Desktop restores ROCKNIX's original profile and targets. Close Desktop

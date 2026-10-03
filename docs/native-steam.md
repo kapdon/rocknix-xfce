@@ -56,8 +56,10 @@ library or changes to the installed ROCKNIX scripts are required.
   signals end the session.
 - `rocknix-desktop-games.service` supervises Desktop transitions, the available
   memory guard. Steam and its children live in the native scope, not the
-  supervisor service. Desktop owns the always-available controller selector;
-  automatic focus detection follows native scope membership.
+  supervisor service. Desktop owns the always-available one-tap controller
+  override. Until tapped, automatic focus detection recognizes the native Steam
+  scope and Gamescope Wayland clients in the mapped LXC. After a tap, the choice
+  stays manual for the rest of that Desktop session.
 - Stop/failure recovery stops the native scope before restoring binfmt,
   Desktop when it was closed. Manual controller selection in a retained Desktop
   survives game exit. Failed cleanup retains the journal. The
@@ -115,7 +117,7 @@ guest-to-host isolation simultaneously is not a supported security claim.
 ## Validation boundaries
 
 Source tests cover native-helper routing, inherited identity variables, shared
-WSI policy, controller scope membership, cleanup ordering, failed cleanup journal
+WSI policy, manual controller selection, cleanup ordering, failed cleanup journal
 retention, idempotent stop, Steam restart/stop behavior and maintenance exclusion
 through recovery and copied updater entry points. The restart and maintenance
 regressions use local fixtures; no new device qualification is claimed. Device
