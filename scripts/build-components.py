@@ -97,7 +97,8 @@ def input_keys(root=None):
         'trash-packages': ['build-support/trash', 'scripts/package-trash.py', 'payload/guest/update-trash-packages.py'],
         'guest-integration': ['rootfs-overlay'],
         'host-integration': ['payload', 'install.sh', 'install-device.sh', 'uninstall.sh',
-                             'upgrade.sh', 'README.md', 'rootfs-overlay/usr/local/bin/rocknix-container-update'],
+                             'upgrade.sh', 'README.md', 'rootfs-overlay/usr/local/bin/rocknix-container-update',
+                             'rootfs-overlay/usr/local/bin/rocknix-gamescope'],
         'host-theme': ['rootfs-overlay/etc/gtk-3.0/settings.ini', 'rootfs-overlay/usr/share/themes/ROCKNIX'],
     }
     root_stages = docker_stages((root / 'Dockerfile.rootfs').read_text())
@@ -322,6 +323,8 @@ def payload_tar(role, work, raw=None, trash=None):
             add_bytes(archive, 'upgrade-lxc.py', (PROJECT / 'payload/bin/rocknix-lxc-upgrade').read_bytes(), 0o755)
             add_bytes(archive, 'payload/guest/rocknix-container-update',
                       (PROJECT / 'rootfs-overlay/usr/local/bin/rocknix-container-update').read_bytes(), 0o755)
+            add_bytes(archive, 'payload/guest/rocknix-gamescope',
+                      (PROJECT / 'rootfs-overlay/usr/local/bin/rocknix-gamescope').read_bytes(), 0o755)
         elif role == 'trash-packages':
             packages = work / 'packages.tar'
             run([sys.executable, PROJECT / 'scripts/package-trash.py', trash, packages])

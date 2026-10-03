@@ -41,10 +41,14 @@ steam_status_dir=$(mktemp -d /tmp/rocknix-steam-session.XXXXXX)
 trap 'rm -rf -- "$steam_status_dir"' EXIT
 trap 'exit 143' TERM
 trap 'exit 130' INT
+# Resolve once per session (and preserve it over Steam's update restart).
+# Close/DRM mode returned above and never consumes desktop geometry.
+display_text=$("$(dirname "$0")/../guest/rocknix-gamescope" --print-args)
+mapfile -t display_args <<< "$display_text"
 while :; do
   rm -f -- "$steam_status_dir/status"
   gamescope_status=0
-  /usr/bin/gamescope --backend wayland -W 1280 -H 720 -w 1280 -h 720 -r 60 \
+  /usr/bin/gamescope --backend wayland "${display_args[@]}" -r 60 \
     --xwayland-count 2 --force-windows-fullscreen -- \
     /bin/bash -c '
       status_file=$1

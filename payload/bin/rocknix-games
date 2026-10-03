@@ -77,16 +77,23 @@ def shortcut(app):
     raise ValueError('Game is no longer in the ROCKNIX Steam list')
 
 
-def mode():
+def settings():
     try:
-        value = json.loads(STATE.read_text())['mode']
-        return value if value in MODES else 'close'
-    except (OSError, ValueError, KeyError):
-        return 'close'
+        value = json.loads(STATE.read_text())
+        if not isinstance(value, dict):
+            raise ValueError('invalid settings')
+    except (OSError, ValueError):
+        value = {}
+    return {'mode': value.get('mode') if value.get('mode') in MODES else 'close',
+            'virtual_display': value.get('virtual_display') is not False}
+
+
+def mode():
+    return settings()['mode']
 
 
 def publish(error=''):
-    atomic(PUBLIC, {'mode': mode(), 'games': catalog(), 'busy': active(UNIT), 'error': error})
+    atomic(PUBLIC, {**settings(), 'games': catalog(), 'busy': active(UNIT), 'error': error})
 
 
 # Desktop owns controller selection independently of any Steam/game lease.
@@ -188,7 +195,9 @@ def request(words):
         atomic(CONTROL, saved, 0o600)
         atomic(CONTROL_PUBLIC, {'mode': words[1], 'active': words[1]})
     elif len(words) == 2 and words[0] == 'mode' and words[1] in MODES:
-        atomic(STATE, {'mode': words[1]}, 0o600)
+        atomic(STATE, {**settings(), 'mode': words[1]}, 0o600)
+    elif len(words) == 2 and words[0] == 'virtual-display' and words[1] in ('on', 'off'):
+        atomic(STATE, {**settings(), 'virtual_display': words[1] == 'on'}, 0o600)
     elif len(words) == 3 and words[0] == 'launch':
         app, selected = words[1:]
         if selected not in MODES or app not in {g['id'] for g in catalog()}:
@@ -199,6 +208,10 @@ def request(words):
             raise ValueError('Close the existing Steam session first')
         if not active('rocknix-desktop.service'):
             raise ValueError('Desktop is no longer running')
+        if selected == 'keep':
+            sizing = run(str(BASE / 'guest/rocknix-gamescope'), '--print-args', check=False)
+            if sizing.returncode:
+                raise ValueError('Desktop window size unavailable; retry the launch')
         properties = ['--property=KillMode=control-group', '--property=TimeoutStopSec=180',
                       '--property=TasksMax=1200',
                       f'--property=ExecStopPost={BASE}/bin/rocknix-games recover']

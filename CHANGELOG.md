@@ -11,6 +11,11 @@ the change list.
 
 ## Highlights since v0.1.0
 
+- **Gamescope display fitting:** Default nested games to the current Sway
+  content area, with an option to use the full monitor resolution and a shared launcher for
+  LXC X11/Wine games. Keep the game resolution stable while Gamescope scales
+  window changes. Native DRM launching remains unchanged. Device qualification
+  of this feature is pending.
 - **Faster development builds:** Reuse unchanged components and rebuild only the
   affected parts, avoiding repeated export and compression of the Debian runtime.
 - **Apps and Settings toggles:** Tap either button again to close its open menu.

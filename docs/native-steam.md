@@ -75,6 +75,54 @@ optional Gamescope WSI bypass. This is a Desktop launch policy, not a firmware
 modification. Scope reuse does not imply that Keep mode inherits every native
 game setting.
 
+## Nested virtual display sizing
+
+**Settings → Gamescope settings → Virtual display · fit desktop** controls the
+initial resolution for nested launches. It defaults to On, including when
+upgrading older settings. On uses the current tiled client content
+size published by the host Sway policy, excluding its decorations. If there are
+no tiled clients, it uses the usable workspace bounds. Output scale converts
+logical Sway dimensions to display pixels. Missing, invalid or stale geometry
+fails the launch instead of silently substituting a guessed resolution.
+
+For example, a current 1920×953 client gives Gamescope `-w 1920 -h 953` and
+`-W 1920 -H 953`. This is a launch-time snapshot: opening a new tab, splitting a
+workspace, showing the keyboard or moving the window can change the actual
+allocation afterwards. Gamescope scales the complete internal display into its
+outer window; the game resolution stays fixed until the next launch. This
+avoids requiring legacy games to resize their rendering buffers. Aspect-ratio
+differences can produce letterboxing. The game must still support the selected
+resolution and its own fullscreen behavior inside that display.
+
+The setting applies to Steam **Keep Desktop** launches. **Close Desktop** still
+uses ROCKNIX's unchanged native DRM launch path. Gamescope always provides an
+isolated display; Off uses the monitor's full resolution, without subtracting
+panels or tabs. It does not revert to a fixed 720p resolution.
+Changing either setting preserves the other and affects only future launches.
+
+LXC programs can use the same policy without going through Steam:
+
+```sh
+rocknix-gamescope -- wine /path/to/game.exe
+rocknix-gamescope -- rocknix-fex /path/to/wine /path/to/game.exe
+rocknix-gamescope --virtual-display off -- /path/to/game
+```
+
+Commands and arguments are passed directly, without shell evaluation. This
+launcher targets X11/Wine games, uses the guest SDL/Wayland backend, and retains
+the shared WSI-disable baseline. Its children select X11 so they cannot bypass
+the virtual display by connecting to the outer Wayland compositor. Direct calls
+to `/usr/bin/gamescope` and applications with their own compositor launch logic
+are not intercepted. The guest base includes Debian's Gamescope backport; no
+host library tree or additional DRM primary device is exposed for it.
+
+The host and guest packages contain the same sizing helper from one canonical
+source. Source regressions cover toggle persistence, legacy settings, content
+bounds, scale, stale/invalid geometry, argument preservation, native DRM routing
+and Steam restart behavior. This feature has not yet been built into a new
+bundle or qualified on RP6 for rendering, physical touch, input or frame times.
+The earlier SDL-backend probe is not validation of this new feature.
+
 ## Accepted trust tradeoff
 
 Installing games, editing prefixes, adding mods and managing non-Steam games

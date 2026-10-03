@@ -1,0 +1,81 @@
+#!/usr/bin/python3
+"""Shared nested display policy and unprivileged Gamescope command launcher."""
+import argparse
+import json
+import math
+import os
+from pathlib import Path
+import sys
+import time
+
+BRIDGE = Path('/run/rocknix-desktop')
+
+
+def display_args(enabled, area=None):
+    if not isinstance(area, dict) or area.get('format') != 1:
+        raise ValueError('Desktop window size is unavailable')
+    stamp = area.get('updated_at')
+    if type(stamp) not in (int, float) or not math.isfinite(stamp) or not -1 <= time.time() - stamp <= 5:
+        raise ValueError('Desktop window size is stale; retry the launch')
+    output, workspace = area['output'], area['workspace']
+    # Content bounds exclude tabs/borders; the empty workspace has none yet.
+    client = (area.get('client') or workspace) if enabled else output['rect']
+    scale = output.get('scale', 1)
+    if type(scale) not in (int, float) or not math.isfinite(scale) or not 0.25 <= scale <= 4:
+        raise ValueError('Invalid desktop scale')
+    for key in ('width', 'height'):
+        values = [rectangle[key] for rectangle in ((client, workspace, output['rect']) if enabled else (output['rect'],))]
+        if any(type(v) is not int or not 1 <= v <= 16384 for v in values) or values != sorted(values):
+            raise ValueError('Invalid desktop window size')
+    width, height = (round(client[key] * scale) for key in ('width', 'height'))
+    if not 1 <= min(width, height) <= max(width, height) <= 16384:
+        raise ValueError('Invalid virtual display size')
+    return ['-W', str(width), '-H', str(height), '-w', str(width), '-h', str(height)]
+
+
+def configured_args(selection='auto'):
+    if selection == 'auto':
+        settings = json.loads((BRIDGE / 'games.json').read_text())
+        if not isinstance(settings, dict):
+            raise ValueError('Invalid Gamescope settings')
+        enabled = settings.get('virtual_display', True)
+        if type(enabled) is not bool:
+            raise ValueError('Invalid virtual display setting')
+    else:
+        enabled = selection == 'on'
+    area = json.loads((BRIDGE / 'workarea.json').read_text())
+    return display_args(enabled, area)
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--virtual-display', choices=('auto', 'on', 'off'), default='auto')
+    parser.add_argument('--print-args', action='store_true', help='emit trusted host Steam display arguments')
+    parser.add_argument('command', nargs=argparse.REMAINDER, help='-- program [arguments]')
+    args = parser.parse_args(argv)
+    dimensions = configured_args(args.virtual_display)
+    if args.print_args:
+        if args.command:
+            parser.error('--print-args does not accept a command')
+        print('\n'.join(dimensions))
+        return
+    command = args.command
+    if command[:1] == ['--']:
+        command = command[1:]
+    if not command:
+        parser.error('provide -- program [arguments]')
+    env = dict(os.environ, SDL_VIDEODRIVER='wayland', ENABLE_GAMESCOPE_WSI='0', DISABLE_GAMESCOPE_WSI='1')
+    # Guest SDL/Wayland works without exposing a DRM primary node to the LXC.
+    # Children use Gamescope's X11 display, not the outer desktop's Wayland socket.
+    os.execve('/usr/bin/gamescope', ['gamescope', '--backend', 'sdl', *dimensions,
+              '--force-windows-fullscreen', '--', '/usr/bin/env', '-u', 'WAYLAND_DISPLAY',
+              '-u', 'WAYLAND_SOCKET', 'SDL_VIDEODRIVER=x11', 'GDK_BACKEND=x11',
+              'QT_QPA_PLATFORM=xcb', *command], env)
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        print(f'Gamescope: {error}', file=sys.stderr)
+        raise SystemExit(1)

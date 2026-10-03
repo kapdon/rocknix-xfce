@@ -82,6 +82,9 @@ chown 0:0 "${TEMP_DIR}/upgrade-lxc.py"
 cp "${PROJECT_DIR}/rootfs-overlay/usr/local/bin/rocknix-container-update" \
   "${TEMP_DIR}/payload/guest/rocknix-container-update"
 chown 0:0 "${TEMP_DIR}/payload/guest/rocknix-container-update"
+cp "${PROJECT_DIR}/rootfs-overlay/usr/local/bin/rocknix-gamescope" \
+  "${TEMP_DIR}/payload/guest/rocknix-gamescope"
+chown 0:0 "${TEMP_DIR}/payload/guest/rocknix-gamescope"
 python3 "${PROJECT_DIR}/scripts/package-trash.py" "${TRASH_PACKAGES_DIR}" \
   "${TEMP_DIR}/payload/guest/trash-packages.tar"
 chown 0:0 "${TEMP_DIR}/payload/guest/trash-packages.tar"

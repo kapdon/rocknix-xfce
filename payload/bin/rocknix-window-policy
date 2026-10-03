@@ -19,7 +19,13 @@ policy_tick() {
     [.. | objects | select(.type? == "output" and .name? != "__i3")
      | . as $output | .. | objects
      | select(.type? == "workspace" and .name? == "98:Desktop")
-     | {format:1, output:{name:$output.name, rect:$output.rect}, workspace:.rect}]
+     | . as $workspace
+     | ([.nodes[]? | recurse(.nodes[]?)
+         | select(.shell? != null and (.fullscreen_mode // 0) == 0)
+         | select(.window_rect.width? > 0 and .window_rect.height? > 0)]
+         | sort_by(.focused != true) | .[0].window_rect // null) as $client
+     | {format:1, output:{name:$output.name, rect:$output.rect, scale:($output.scale // 1)},
+        workspace:$workspace.rect, client:$client, updated_at:now}]
     | if length == 1 then .[0] else null end
   ' >"$runtime_dir/workarea.json.new" || return 0
   mv -f "$runtime_dir/workarea.json.new" "$runtime_dir/workarea.json"

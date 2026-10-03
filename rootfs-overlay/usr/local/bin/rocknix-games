@@ -51,15 +51,21 @@ def main():
     time.sleep(.3)
     current = state()
     if sys.argv[1:] == ['settings']:
-        selected = menu('While gamescope is running', [
+        selected = menu('Gamescope settings · applies to next launch', [
+            ('Virtual display · fit desktop: ' + ('On' if current.get('virtual_display', True) else 'Off · native monitor'), 'virtual-display'),
             ('Close Desktop · native fullscreen' + (' · Current' if current['mode'] == 'close' else ''), 'close'),
             ('Keep Desktop running' + (' · Current' if current['mode'] == 'keep' else ''), 'keep'),
             ('Back', None)])
         if selected:
-            send('mode', selected)
+            key = 'virtual_display' if selected == 'virtual-display' else 'mode'
+            expected = not current.get('virtual_display', True) if key == 'virtual_display' else selected
+            if key == 'virtual_display':
+                send('virtual-display', 'on' if expected else 'off')
+            else:
+                send('mode', selected)
             for _ in range(30):
                 time.sleep(.1)
-                if state()['mode'] == selected:
+                if state().get(key) == expected:
                     return
             raise OSError('setting was not saved')
         return
