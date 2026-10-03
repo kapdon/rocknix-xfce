@@ -14,6 +14,15 @@ policy_tick() {
   local margin aw ah ww wh px py count=0
   local -A alive=()
   tree=$(swaymsg -r -t get_tree) || return 0
+  # Workspace bounds include layer-shell panel/keyboard reservations, not tabs.
+  printf '%s' "$tree" | jq -c '
+    [.. | objects | select(.type? == "output" and .name? != "__i3")
+     | . as $output | .. | objects
+     | select(.type? == "workspace" and .name? == "98:Desktop")
+     | {format:1, output:{name:$output.name, rect:$output.rect}, workspace:.rect}]
+    | if length == 1 then .[0] else null end
+  ' >"$runtime_dir/workarea.json.new" || return 0
+  mv -f "$runtime_dir/workarea.json.new" "$runtime_dir/workarea.json"
   rows=$(printf '%s' "$tree" | jq -r '
     def integer: type == "number" and floor == .;
     def dimension: integer and . > 0 and . <= 32768;

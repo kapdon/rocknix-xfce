@@ -313,6 +313,8 @@ cleanup() {
     "${RUNTIME_DIR}/keyboard-visible" \
     "${RUNTIME_DIR}/window-count" \
     "${RUNTIME_DIR}/window-count.new" \
+    "${RUNTIME_DIR}/workarea.json" \
+    "${RUNTIME_DIR}/workarea.json.new" \
     "${RUNTIME_DIR}/network-state" \
     "${RUNTIME_DIR}/network-state.new" \
     "${HOST_CONTROL_FIFO}" \

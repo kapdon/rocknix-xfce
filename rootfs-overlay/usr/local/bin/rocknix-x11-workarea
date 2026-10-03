@@ -1,0 +1,148 @@
+#!/usr/bin/python3
+"""Publish host workspace bounds in the guest X server's coordinate system."""
+import ctypes as C
+import json
+from pathlib import Path
+import time
+
+STATE = Path('/run/rocknix-desktop/workarea.json')
+PROPERTIES = ('_NET_WORKAREA', '_GTK_WORKAREAS_D0', '_NET_CURRENT_DESKTOP',
+              '_NET_NUMBER_OF_DESKTOPS', '_NET_DESKTOP_VIEWPORT')
+
+
+def rectangle(value):
+    result = tuple(value[k] for k in ('x', 'y', 'width', 'height'))
+    if any(type(v) is not int or abs(v) > 131072 for v in result):
+        raise ValueError('invalid rectangle')
+    if min(result[2:]) <= 0:
+        raise ValueError('empty rectangle')
+    return result
+
+
+def translate(state, monitors):
+    """Map logical Sway bounds to RandR pixels, including offset and scale."""
+    if state['format'] != 1:
+        raise ValueError('unknown work-area format')
+    output = state['output']
+    x, y, width, height = rectangle(output['rect'])
+    wx, wy, ww, wh = rectangle(state['workspace'])
+    if not (x <= wx < wx + ww <= x + width and y <= wy < wy + wh <= y + height):
+        raise ValueError('workspace outside output')
+    mx, my, mw, mh = monitors[output['name']]
+    left = mx + round((wx - x) * mw / width)
+    top = my + round((wy - y) * mh / height)
+    right = mx + round((wx + ww - x) * mw / width)
+    bottom = my + round((wy + wh - y) * mh / height)
+    if left < 0 or top < 0 or right <= left or bottom <= top:
+        raise ValueError('invalid X work area')
+    return (left, top, right - left, bottom - top)
+
+
+class Monitor(C.Structure):
+    _fields_ = [('name', C.c_ulong), ('primary', C.c_int), ('automatic', C.c_int),
+                ('noutput', C.c_int), ('x', C.c_int), ('y', C.c_int),
+                ('width', C.c_int), ('height', C.c_int), ('mwidth', C.c_int),
+                ('mheight', C.c_int), ('outputs', C.POINTER(C.c_ulong))]
+
+
+class X11:
+    def __init__(self):
+        self.x = C.CDLL('libX11.so.6')
+        self.randr = C.CDLL('libXrandr.so.2')
+        for name, args, result in (
+            ('XOpenDisplay', [C.c_char_p], C.c_void_p),
+            ('XDefaultRootWindow', [C.c_void_p], C.c_ulong),
+            ('XInternAtom', [C.c_void_p, C.c_char_p, C.c_int], C.c_ulong),
+            ('XGetAtomName', [C.c_void_p, C.c_ulong], C.c_void_p),
+            ('XChangeProperty', [C.c_void_p, C.c_ulong, C.c_ulong, C.c_ulong,
+                                 C.c_int, C.c_int, C.c_void_p, C.c_int], C.c_int),
+            ('XGetWindowProperty', [C.c_void_p, C.c_ulong, C.c_ulong, C.c_long,
+                C.c_long, C.c_int, C.c_ulong, C.c_void_p, C.c_void_p,
+                C.c_void_p, C.c_void_p, C.c_void_p], C.c_int),
+            ('XDeleteProperty', [C.c_void_p, C.c_ulong, C.c_ulong], C.c_int),
+            ('XFree', [C.c_void_p], C.c_int),
+            ('XFlush', [C.c_void_p], C.c_int),
+        ):
+            fn = getattr(self.x, name)
+            fn.argtypes, fn.restype = args, result
+        self.randr.XRRGetMonitors.argtypes = [C.c_void_p, C.c_ulong, C.c_int, C.POINTER(C.c_int)]
+        self.randr.XRRGetMonitors.restype = C.POINTER(Monitor)
+        self.randr.XRRFreeMonitors.argtypes = [C.POINTER(Monitor)]
+        self.display = self.x.XOpenDisplay(None)
+        if not self.display:
+            raise RuntimeError('X display unavailable')
+        self.root = self.x.XDefaultRootWindow(self.display)
+        self.previous = None
+
+    def atom(self, name):
+        return self.x.XInternAtom(self.display, name.encode(), False)
+
+    def monitors(self):
+        count = C.c_int()
+        data = self.randr.XRRGetMonitors(self.display, self.root, True, C.byref(count))
+        result = {}
+        try:
+            for i in range(count.value):
+                m = data[i]
+                name = self.x.XGetAtomName(self.display, m.name)
+                try:
+                    result[C.string_at(name).decode()] = (m.x, m.y, m.width, m.height)
+                finally:
+                    self.x.XFree(name)
+        finally:
+            self.randr.XRRFreeMonitors(data)
+        return result
+
+    def set(self, name, values, kind='CARDINAL'):
+        data = (C.c_ulong * len(values))(*values)
+        self.x.XChangeProperty(self.display, self.root, self.atom(name),
+                              self.atom(kind), 32, 0, data, len(values))
+
+    def supported(self):
+        kind, length, remaining = C.c_ulong(), C.c_ulong(), C.c_ulong()
+        fmt, data = C.c_int(), C.c_void_p()
+        status = self.x.XGetWindowProperty(self.display, self.root,
+            self.atom('_NET_SUPPORTED'), 0, 4096, False, self.atom('ATOM'),
+            C.byref(kind), C.byref(fmt), C.byref(length), C.byref(remaining), C.byref(data))
+        try:
+            if status or fmt.value != 32 or remaining.value:
+                raise ValueError('invalid supported atoms')
+            return list(C.cast(data, C.POINTER(C.c_ulong))[:length.value])
+        finally:
+            self.x.XFree(data)
+
+    def publish(self, area):
+        if area == self.previous:
+            return
+        # This X server belongs only to the LXC Desktop workspace, not host ES.
+        self.set('_NET_NUMBER_OF_DESKTOPS', [1])
+        self.set('_NET_CURRENT_DESKTOP', [0])
+        self.set('_NET_DESKTOP_VIEWPORT', [0, 0])
+        self.set('_NET_WORKAREA', area)
+        self.set('_GTK_WORKAREAS_D0', area)
+        atoms = list(dict.fromkeys(self.supported() + [self.atom(p) for p in PROPERTIES]))
+        self.set('_NET_SUPPORTED', atoms, 'ATOM')
+        self.x.XFlush(self.display)
+        self.previous = area
+
+    def clear(self):
+        if self.previous is not None:
+            for name in ('_NET_WORKAREA', '_GTK_WORKAREAS_D0'):
+                self.x.XDeleteProperty(self.display, self.root, self.atom(name))
+            self.x.XFlush(self.display)
+            self.previous = None
+
+
+def main():
+    x = X11()
+    while True:
+        try:
+            x.publish(translate(json.loads(STATE.read_text()), x.monitors()))
+        except (OSError, ValueError, KeyError, TypeError):
+            # Missing/mismatched output information must not leave stale bounds.
+            x.clear()
+        time.sleep(.5)
+
+
+if __name__ == '__main__':
+    main()

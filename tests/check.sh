@@ -22,6 +22,7 @@ python3 tests/lxc-maintenance-idle.py
 python3 tests/lxc-password.py
 python3 tests/lxc-hostname.py
 python3 tests/lxc-session.py
+python3 tests/x11-workarea.py
 python3 tests/keyboard-suppression.py
 python3 tests/launcher-cleanup.py
 python3 tests/settings-label.py

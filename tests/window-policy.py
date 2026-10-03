@@ -47,6 +47,18 @@ print('[{"success":true}]')
                        env={**env, 'QUERY_STATUS': '1' if failure else '0'}, timeout=5)
         return [json.loads(line)[-1] for line in log.read_text().splitlines()] if log.exists() else []
 
+    # Publish layer-shell usable workspace bounds, independently of client sizes.
+    run(dict(type='output', name='DSI-1', rect=dict(x=0,y=0,width=1920,height=1080),
+             nodes=[workspace(height=1000)]))
+    area = json.loads((root / 'workarea.json').read_text())
+    assert area['workspace']['height'] == 1000
+    assert area['output']['name'] == 'DSI-1'
+    run(dict(type='output', name='DSI-1', rect=dict(x=0,y=0,width=1920,height=1080),
+             nodes=[workspace(height=622)]))
+    assert json.loads((root / 'workarea.json').read_text())['workspace']['height'] == 622
+    run(workspace(name='Gaming'))
+    assert json.loads((root / 'workarea.json').read_text()) is None
+
     pip = window(7)
     # Startup must not send a layout command to a surviving floating window
     # when the containing workspace is already tabbed (real RP6 regression).

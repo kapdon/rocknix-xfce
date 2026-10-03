@@ -24,6 +24,7 @@ WVKBD_PID=""
 KEYBOARD_CONTROL_PID=""
 METRICS_WATCH_PID=""
 XWAYLAND_PID=""
+WORKAREA_PID=""
 
 cleanup() {
   trap - EXIT INT TERM HUP
@@ -32,6 +33,7 @@ cleanup() {
   [ -z "${KEYBOARD_CONTROL_PID}" ] || kill "${KEYBOARD_CONTROL_PID}" 2>/dev/null || true
   [ -z "${WVKBD_PID}" ] || kill "${WVKBD_PID}" 2>/dev/null || true
   [ -z "${METRICS_WATCH_PID}" ] || kill "${METRICS_WATCH_PID}" 2>/dev/null || true
+  [ -z "${WORKAREA_PID}" ] || kill "${WORKAREA_PID}" 2>/dev/null || true
   [ -z "${XWAYLAND_PID}" ] || kill "${XWAYLAND_PID}" 2>/dev/null || true
   # Never wait for app children such as Thunar. On exit, systemd terminates
   # the entire desktop cgroup with a bounded timeout.
@@ -143,6 +145,9 @@ if [ "${x11_ready}" != true ]; then
   exit 1
 fi
 
+/usr/local/bin/rocknix-x11-workarea &
+WORKAREA_PID=$!
+
 signature=$(metrics_signature)
 start_chrome
 watch_metrics "${signature}" &
@@ -159,7 +164,11 @@ CONTROL_PID=$!
 ) &
 
 while :; do
-wait -n "${XWAYLAND_PID}" "${WAYBAR_PID}" "${CONTROL_PID}" "${WVKBD_PID}" "${KEYBOARD_CONTROL_PID}" "${METRICS_WATCH_PID}"
+wait -n "${WORKAREA_PID}" "${XWAYLAND_PID}" "${WAYBAR_PID}" "${CONTROL_PID}" "${WVKBD_PID}" "${KEYBOARD_CONTROL_PID}" "${METRICS_WATCH_PID}"
+if ! kill -0 "${WORKAREA_PID}" 2>/dev/null; then
+  printf 'Desktop X11 work-area bridge exited unexpectedly\n' >&2
+  exit 1
+fi
 if ! kill -0 "${XWAYLAND_PID}" 2>/dev/null; then
   printf 'Desktop Xwayland exited unexpectedly\n' >&2
   exit 1
