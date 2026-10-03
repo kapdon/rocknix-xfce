@@ -4,6 +4,8 @@ import argparse
 import json
 import math
 import os
+import runpy
+import subprocess
 from pathlib import Path
 import sys
 import time
@@ -69,15 +71,16 @@ def main(argv=None):
     env['PATH'] = env.get('PATH', os.defpath) + ':/usr/games'
     # Guest SDL/Wayland works without exposing a DRM primary node to the LXC.
     # Children use Gamescope's X11 display, not the outer desktop's Wayland socket.
-    os.execve('/usr/games/gamescope', ['gamescope', '--backend', 'sdl', *dimensions,
+    launch = runpy.run_path('/usr/local/bin/rocknix-gamescope-session')['launch']
+    return launch(['/usr/games/gamescope', '--backend', 'sdl', *dimensions,
               '--force-windows-fullscreen', '--', '/usr/bin/env', '-u', 'WAYLAND_DISPLAY',
               '-u', 'WAYLAND_SOCKET', 'SDL_VIDEODRIVER=x11', 'GDK_BACKEND=x11',
-              'QT_QPA_PLATFORM=xcb', *command], env)
+              'QT_QPA_PLATFORM=xcb'], command, env)
 
 
 if __name__ == '__main__':
     try:
-        main()
-    except (OSError, ValueError, KeyError, TypeError) as error:
+        raise SystemExit(main())
+    except (OSError, ValueError, KeyError, TypeError, RuntimeError, subprocess.SubprocessError) as error:
         print(f'Gamescope: {error}', file=sys.stderr)
         raise SystemExit(1)

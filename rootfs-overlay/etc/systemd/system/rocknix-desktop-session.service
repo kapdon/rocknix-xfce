@@ -1,7 +1,8 @@
 [Unit]
 Description=ROCKNIX Desktop user session
-Requires=dbus.service
-After=dbus.service systemd-user-sessions.service
+Requires=dbus.service user@1000.service
+Wants=rocknix-fex-server.service
+After=dbus.service systemd-user-sessions.service user@1000.service rocknix-fex-server.service
 ConditionPathExists=/run/rocknix-bridge/session.env
 ConditionPathExists=/run/rocknix-desktop/control
 # This unit exists only in Debian. PID 1 powers off the LXC container; the

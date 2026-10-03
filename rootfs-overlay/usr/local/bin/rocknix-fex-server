@@ -1,0 +1,44 @@
+#!/usr/bin/python3
+"""Start the shared native FEXServer and notify systemd once it is ready."""
+import os
+import select
+import signal
+import socket
+import subprocess
+import sys
+
+
+def main():
+    reader, writer = os.pipe()
+    process = subprocess.Popen(['/run/rocknix-fex/bin/FEXServer', '-f',
+                                '--wait_pipe=' + str(writer), '-p'], pass_fds=(writer,))
+    os.close(writer)
+    try:
+        # FEX closes its startup pipe only after binding sockets/rootfs setup.
+        ready = select.select([reader], [], [], 10)[0]
+        if not ready or os.read(reader, 1) or process.poll() is not None:
+            raise RuntimeError('FEXServer failed to become ready')
+        for signum in (signal.SIGTERM, signal.SIGINT):
+            signal.signal(signum, lambda sig, frame: process.send_signal(sig))
+        address = os.environ['NOTIFY_SOCKET']
+        with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as notify:
+            notify.connect('\0' + address[1:] if address.startswith('@') else address)
+            notify.sendall(b'READY=1')
+        return process.wait()
+    finally:
+        os.close(reader)
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+
+
+if __name__ == '__main__':
+    try:
+        raise SystemExit(main())
+    except (OSError, RuntimeError) as error:
+        print(f'FEXServer: {error}', file=sys.stderr)
+        raise SystemExit(1)

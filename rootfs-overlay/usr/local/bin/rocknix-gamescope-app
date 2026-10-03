@@ -4,25 +4,11 @@ import os
 from pathlib import Path
 import subprocess
 import sys
-import tempfile
 
 
 def message(text):
     subprocess.run(['/usr/local/bin/rocknix-launcher', 'games-menu', text],
                    input='Back\n', text=True, check=False)
-
-
-def child(status, command):
-    # Record the application's outcome separately from compositor teardown.
-    # Debian Gamescope on RP6 can abort during teardown after a clean app exit.
-    try:
-        result = subprocess.run(command, check=False)
-        code = result.returncode
-    except OSError as error:
-        print(f'Application launch failed: {error}', file=sys.stderr)
-        code = 1
-    Path(status).write_text(str(code))
-    return code
 
 
 def main(command):
@@ -42,21 +28,15 @@ def main(command):
         return
     logs = Path(os.environ.get('XDG_STATE_HOME', str(Path.home() / '.local/state'))) / 'rocknix-desktop'
     logs.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix='rocknix-gamescope-app-') as temporary:
-        status = Path(temporary) / 'exit-status'
-        with (logs / 'gamescope-app.log').open('w') as stream:
-            result = subprocess.run(['/usr/local/bin/rocknix-gamescope', '--',
-                '/usr/local/bin/rocknix-gamescope-app', '--child', str(status), *command],
-                stdout=stream, stderr=subprocess.STDOUT, check=False)
-        clean_exit = status.exists() and status.read_text() == '0'
-        if result.returncode and not clean_exit:
-            message('Gamescope session failed — close the app and retry; see gamescope-app.log')
+    with (logs / 'gamescope-app.log').open('w') as stream:
+        result = subprocess.run(['/usr/local/bin/rocknix-gamescope', '--', *command],
+                                stdout=stream, stderr=subprocess.STDOUT, check=False)
+    if result.returncode:
+        message('Gamescope session failed — close the app and retry; see gamescope-app.log')
 
 
 if __name__ == '__main__':
     try:
-        if sys.argv[1:2] == ['--child'] and len(sys.argv) >= 4:
-            raise SystemExit(child(sys.argv[2], sys.argv[3:]))
         main(sys.argv[1:])
     except OSError as error:
         print(f'Gamescope launch failed: {error}', file=sys.stderr)

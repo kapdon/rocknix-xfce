@@ -25,6 +25,8 @@ CONFIG = {
     'etc/xdg/waybar/config.jsonc', 'etc/xdg/waybar/style.css',
     'etc/xdg/xdg-desktop-portal/rocknix-portals.conf',
     'etc/systemd/system/rocknix-desktop-session.service',
+    'etc/systemd/system/rocknix-fex-server.service',
+    'var/lib/systemd/linger/rocknix',
     'etc/systemd/journald.conf.d/rocknix-container.conf',
 }
 

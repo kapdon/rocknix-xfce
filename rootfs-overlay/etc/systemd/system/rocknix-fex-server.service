@@ -1,0 +1,21 @@
+[Unit]
+Description=Shared ROCKNIX FEX server for Desktop applications
+PartOf=rocknix-desktop-session.service
+Before=rocknix-desktop-session.service
+ConditionFileIsExecutable=/run/rocknix-fex/bin/FEXServer
+ConditionPathIsDirectory=/run/rocknix-fex/ArchLinux
+
+[Service]
+Type=notify
+User=rocknix
+Group=rocknix
+RuntimeDirectory=rocknix-fex-server
+RuntimeDirectoryMode=0700
+Environment=HOME=/home/rocknix XDG_RUNTIME_DIR=/run/rocknix-fex-server
+Environment=LD_LIBRARY_PATH=/run/rocknix-fex/lib FEX_ROOTFS=/run/rocknix-fex/ArchLinux
+ExecStart=/usr/local/bin/rocknix-fex-server
+KillMode=control-group
+TimeoutStartSec=15
+TimeoutStopSec=5
+Restart=on-failure
+RestartSec=1

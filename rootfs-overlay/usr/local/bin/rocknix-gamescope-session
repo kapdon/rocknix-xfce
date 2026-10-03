@@ -1,0 +1,157 @@
+#!/usr/bin/python3
+"""Bound each guest Gamescope launch to an unprivileged systemd service."""
+import json
+import os
+from pathlib import Path
+import signal
+import subprocess
+import sys
+import tempfile
+import time
+import uuid
+
+HELPER = '/usr/local/bin/rocknix-gamescope-session'
+GRACE = 3
+
+
+def manager_env():
+    return dict(os.environ, XDG_RUNTIME_DIR=f'/run/user/{os.getuid()}',
+                DBUS_SESSION_BUS_ADDRESS=f'unix:path=/run/user/{os.getuid()}/bus')
+
+
+def child(status, command):
+    try:
+        code = subprocess.run(command, check=False).returncode
+    except OSError as error:
+        print(f'Application launch failed: {error}', file=sys.stderr)
+        code = 127
+    path = Path(status)
+    temporary = path.with_suffix('.tmp')
+    temporary.write_text(json.dumps({'application': code}))
+    temporary.replace(path)
+    return code if code >= 0 else 128 - code
+
+
+def supervise(request):
+    data = json.loads(Path(request).read_text())
+    status = Path(request).with_name('application.json')
+    stopping = 0
+    def stop(signum, frame):
+        nonlocal stopping
+        stopping = signum
+    for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+        signal.signal(signum, stop)
+    process = subprocess.Popen([*data['prefix'], HELPER, '--child', str(status),
+                                *data['command']], env=data['env'], cwd=data['cwd'])
+    app = None
+    forced = False
+    try:
+        while process.poll() is None and not stopping and not status.exists():
+            time.sleep(.05)
+        if status.exists():
+            app = json.loads(status.read_text())['application']
+    finally:
+        # Main-app exit must stop even a compositor stuck waiting on its reaper.
+        # systemd clears remaining descendants after this main process exits.
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=GRACE)
+            except subprocess.TimeoutExpired:
+                forced = True
+                process.kill()
+        process.wait(timeout=GRACE)
+    result = {'application': app, 'compositor': process.returncode,
+              'forced_compositor_stop': forced, 'signal': stopping}
+    Path(data['result']).write_text(json.dumps(result) + '\n')
+    print('Gamescope session outcome: ' + json.dumps(result), file=sys.stderr)
+    if stopping:
+        return 128 + stopping
+    # A successful primary app remains successful, but compositor failure is
+    # recorded separately. The caller still requires completed cgroup cleanup.
+    code = app if app is not None else process.returncode or 1
+    return code if code >= 0 else 128 - code
+
+
+def service_state(unit, control):
+    result = subprocess.run(['systemctl', '--user', 'show', unit,
+        '--property=LoadState,ActiveState,Result,ControlGroup'], env=control,
+        capture_output=True, text=True, timeout=5)
+    state = dict(line.split('=', 1) for line in result.stdout.splitlines() if '=' in line)
+    if not state or state.get('ActiveState') not in ('inactive', 'failed') or state.get('ControlGroup') != '':
+        raise RuntimeError('Gamescope cleanup could not be confirmed for ' + unit)
+    return state
+
+
+def launch(prefix, command, env):
+    control = manager_env()
+    if not Path(control['XDG_RUNTIME_DIR'], 'bus').exists():
+        raise RuntimeError('Desktop user manager is unavailable; restart Desktop')
+    # FEXServer is shared by ordinary and wrapped apps. Never let the first
+    # wrapped app autostart it inside a per-game cgroup.
+    if Path('/run/rocknix-fex/bin/FEXServer').exists():
+        subprocess.run(['systemctl', 'is-active', '--quiet', 'rocknix-fex-server.service'],
+                       check=True)
+    unit = 'rocknix-gamescope-' + uuid.uuid4().hex + '.service'
+    logs = Path(env.get('XDG_STATE_HOME', str(Path.home() / '.local/state'))) / 'rocknix-desktop/gamescope-sessions'
+    logs.mkdir(parents=True, exist_ok=True)
+    outcome = logs / (unit + '.json')
+    def interrupted(signum, frame):
+        raise SystemExit(128 + signum)
+    previous = {s: signal.signal(s, interrupted) for s in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)}
+    with tempfile.TemporaryDirectory(prefix='rocknix-gamescope-', dir=control['XDG_RUNTIME_DIR']) as scratch:
+        request = Path(scratch) / 'request.json'
+        request.write_text(json.dumps({'prefix': prefix, 'command': command, 'env': env,
+                                      'cwd': os.getcwd(), 'result': str(outcome)}))
+        request.chmod(0o600)
+        process = None
+        try:
+            process = subprocess.Popen(['systemd-run', '--user', '--wait', '--pipe',
+                '--service-type=exec', '--expand-environment=no', '--unit=' + unit,
+                '--property=KillMode=control-group', '--property=TimeoutStopSec=5s',
+                '--property=SendSIGKILL=yes', '--property=TasksMax=1024',
+                '--', HELPER, '--session', str(request)], env=control)
+            code = process.wait()
+            state = service_state(unit, control)
+            if outcome.exists():
+                result = json.loads(outcome.read_text())
+                result.update(service=state, cleanup_complete=True)
+                outcome.write_text(json.dumps(result) + '\n')
+                # Timeout here means systemd escalated remaining children to
+                # SIGKILL. Accept the app outcome only after the cgroup is gone.
+                if state.get('Result') == 'timeout' and not result['signal'] and result['application'] is not None:
+                    code = result['application']
+                    code = code if code >= 0 else 128 - code
+            return code
+        finally:
+            # Also stop the service when its foreground client is interrupted.
+            # Do not restore signal handlers until bounded cleanup finishes.
+            for s in previous:
+                signal.signal(s, signal.SIG_IGN)
+            try:
+                subprocess.run(['systemctl', '--user', 'stop', unit], env=control,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=12)
+                service_state(unit, control)
+                subprocess.run(['systemctl', '--user', 'reset-failed', unit], env=control,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
+                if process is not None:
+                    try:
+                        process.wait(timeout=2)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait()
+            finally:
+                for s, handler in previous.items():
+                    signal.signal(s, handler)
+
+
+if __name__ == '__main__':
+    try:
+        if sys.argv[1:2] == ['--session'] and len(sys.argv) == 3:
+            raise SystemExit(supervise(sys.argv[2]))
+        if sys.argv[1:2] == ['--child'] and len(sys.argv) >= 4:
+            raise SystemExit(child(sys.argv[2], sys.argv[3:]))
+        raise RuntimeError('Use rocknix-gamescope to launch applications')
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
+        print(f'Gamescope session: {error}', file=sys.stderr)
+        raise SystemExit(1)
