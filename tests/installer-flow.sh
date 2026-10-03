@@ -146,8 +146,7 @@ for asset in "../escape.tar.xz" "rocknix-desktop-rp6-arm64-$candidate-r123a2.tar
 done
 printf 'PASS: rebuilt rolling artifacts update; unsafe/unsupported filenames refused before bundle download\n'
 
-# Format 2 resolves the non-base probe/update profile first, and fetches the
-# base only after Install is selected and confirmed. Exercise real dispatch and
+# Format 2 assembles a complete system once for either action. Exercise dispatch and
 # bootstrap integrity with a fixture assembler; archive composition is tested
 # independently by components.py.
 export COMPONENT_FIXTURE="$scratch/bundle"
@@ -194,9 +193,9 @@ output=$(main --dev <<<n)
 test "$(cat "$FLOW_LOG")" = 'profile:update'
 : >"$FLOW_LOG"
 output=$(main --dev --yes)
-test "$(cat "$FLOW_LOG")" = $'profile:update\nprofile:install\ninstall'
+test "$(cat "$FLOW_LOG")" = $'profile:update\ninstall'
 : >"$FLOW_LOG"
 printf '# changed after signing\n' >>"$scratch/bootstrap.py"
 if (main --dev --yes) >/dev/null 2>&1; then exit 1; fi
 test ! -s "$FLOW_LOG"
-printf 'PASS: component manifests dispatch Update without base; Install waits for consent; bootstrap corruption stops execution\n'
+printf 'PASS: component manifests assemble once for Install/Update; consent and bootstrap integrity enforced\n'
