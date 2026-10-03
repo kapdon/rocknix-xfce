@@ -6,11 +6,21 @@
   "margin-bottom": 0,
   "margin-left": 0,
   "margin-right": 0,
-  "modules-left": ["custom/apps", "custom/windows"],
-  "modules-right": ["custom/status", "battery", "clock", "custom/keyboard", "custom/return"],
+  "modules-left": [
+    "custom/apps",
+    "custom/windows"
+  ],
+  "modules-right": [
+    "custom/controller",
+    "custom/status",
+    "battery",
+    "clock",
+    "custom/keyboard",
+    "custom/return"
+  ],
   "custom/apps": {
     "format": "Apps",
-    "tooltip-format": "Open apps • D-pad moves\nBottom button: launch • Right button: dismiss\nR3: close focused window",
+    "tooltip-format": "Open apps \u2022 D-pad moves\nBottom button: launch \u2022 Right button: dismiss\nR3: close focused window",
     "on-click": "/usr/local/bin/rocknix-launcher"
   },
   "custom/windows": {
@@ -41,12 +51,18 @@
   },
   "custom/keyboard": {
     "format": "Keyboard",
-    "tooltip-format": "Show or hide the on-screen keyboard • L3",
+    "tooltip-format": "Show or hide the on-screen keyboard \u2022 L3",
     "on-click": "/usr/local/bin/rocknix-keyboard-toggle"
   },
   "custom/return": {
     "format": "Exit Desktop",
     "tooltip-format": "Close desktop apps and return to ROCKNIX",
     "on-click": "/usr/local/bin/rocknix-return"
+  },
+  "custom/controller": {
+    "exec": "/usr/local/bin/rocknix-games controls-status",
+    "return-type": "json",
+    "interval": 1,
+    "on-click": "/usr/local/bin/rocknix-games controls"
   }
 }

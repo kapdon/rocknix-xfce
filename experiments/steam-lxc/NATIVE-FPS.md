@@ -205,3 +205,25 @@ Stopped the test; Desktop and Sway stayed active, the lease cleared, and no Stea
 or gamescope process remained. The saved default remains close. Source checks and
 eight catalog/lifecycle tests passed. Physical Guide-button testing and overlay
 root-cause diagnosis remain outstanding.
+
+## Controller focus switching and touchscreen override
+
+Keep mode now polls host Sway focus at 0.5-second intervals and checks the focused
+process's systemd cgroup against our owned game service. It switches InputPlumber
+device 0 between the saved native profile and Desktop's profile. Window names are
+not trusted for ownership. The virtual targets are not reset during these changes.
+The panel's Pad control offers Automatic, Desktop controls and Game controls;
+overrides reset to Automatic at the next session. Errors in the focus watcher stop
+the owned game session; durable ExecStopPost restores Desktop controls when Desktop
+is still active, while Desktop shutdown retains its native-profile restoration.
+
+Live RP6 check: Satisfactory reached its menu. Game focus selected native
+`default.yaml`; Thunar focus selected `desktop.yaml`. Panel pointer activation
+applied both manual overrides and then Automatic. Forced SIGKILL of the supervisor
+while game controls were active restored Desktop controls, cleared the session and
+panel state, and left Desktop/Sway active without Steam/gamescope processes.
+The DualSense `/sys/class/input/js1` symlink remained the same `input8/js1` device
+throughout focus changes, overrides and recovery. No virtual-controller recreation
+was observed. Eleven catalog/controller/lifecycle tests and full source checks passed.
+Physical stick/button gameplay and transitions while buttons are held are not yet
+accepted; these profile/device observations do not establish Steam overlay behavior.

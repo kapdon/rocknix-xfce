@@ -115,6 +115,20 @@ session, restores native binfmt state after it ends, and stops it if host availa
 RAM drops below 1.5 GiB. Nested mode disables frame generation and gamescope WSI for compatibility.
 Close mode follows native ROCKNIX settings, including its frame-generation choice.
 
+While a **Keep Desktop** Steam session runs, the panel shows **Pad: Game** or
+**Pad: Desktop**. Tap it to choose:
+
+- **Automatic** (the default for each session): native gamepad controls when our
+  Steam/gamescope window has focus; Desktop mouse/keyboard mappings elsewhere.
+- **Desktop controls**: force pointer and Desktop shortcuts regardless of focus.
+- **Game controls**: force the native controller profile for Steam Input.
+
+Only the InputPlumber profile changes; the virtual DualSense stays connected.
+The override lasts for that session. Stopping the session, including a supervisor
+crash, restores Desktop controls and removes the panel control. If the focus
+watcher fails, the game session ends and recovery restores Desktop controls.
+Close Desktop continues to use the ordinary native ROCKNIX input lifecycle.
+
 RP6 validation currently covers Satisfactory reaching its main menu and the
 Desktop lifecycle, not loaded-factory gameplay, controller/audio acceptance or a
 full image build. See the [FPS and handoff record](../experiments/steam-lxc/NATIVE-FPS.md).

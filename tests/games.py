@@ -73,6 +73,35 @@ class Games(unittest.TestCase):
                 g.recover()
             self.assertTrue(p.exists())
 
+    def test_focus_requires_owned_process(self):
+        with tempfile.TemporaryDirectory() as tmp,patch.object(g,'PROC',Path(tmp)):
+            p=Path(tmp)/'123';p.mkdir()
+            (p/'cgroup').write_text('0::/system.slice/' + g.UNIT + '\n')
+            self.assertTrue(g.focused_game({'floating_nodes':[{'focused':True,'pid':123}]}))
+            self.assertFalse(g.focused_game({'focused':False,'pid':123}))
+            self.assertFalse(g.focused_game({'focused':True,'pid':456,'name':'Steam'}))
+            (p/'cgroup').write_text('0::/system.slice/fake-' + g.UNIT + '\n')
+            self.assertFalse(g.focused_game({'focused':True,'pid':123}))
+
+    def test_manual_override_and_auto(self):
+        with tempfile.TemporaryDirectory() as tmp,patch.object(g,'CONTROL',Path(tmp)/'mode'),patch.object(g,'CONTROL_PUBLIC',Path(tmp)/'public'),patch.object(g,'control_profile') as profile,patch.object(g.subprocess,'run',return_value=SimpleNamespace(stdout='{}')),patch.object(g,'focused_game',return_value=True):
+            g.atomic(g.CONTROL,{'mode':'desktop'})
+            self.assertEqual(g.control_tick({},'game'),'desktop')
+            profile.assert_called_once_with({},'desktop')
+            profile.reset_mock()
+            g.control_tick({},'desktop');profile.assert_not_called()
+            g.atomic(g.CONTROL,{'mode':'auto'})
+            self.assertEqual(g.control_tick({},'desktop'),'game')
+            self.assertEqual(json.loads(g.CONTROL_PUBLIC.read_text())['mode'],'auto')
+
+    def test_keep_recovery_restores_controller(self):
+        with tempfile.TemporaryDirectory() as tmp,patch.object(g,'LEASE',Path(tmp)),patch.object(g,'CONTROL',Path(tmp)/'mode'),patch.object(g,'CONTROL_PUBLIC',Path(tmp)/'public'),patch.object(g,'control_profile') as profile,patch.object(g,'active',return_value=True),patch.object(g,'run',return_value=SimpleNamespace(stdout='running')),patch.object(g,'publish'):
+            saved={'mode':'keep','binfmt':{},'controller':{'desktop':'desktop','game':'native'}}
+            (Path(tmp)/'session.json').write_text(json.dumps(saved))
+            g.recover()
+            profile.assert_called_once_with(saved,'desktop')
+            self.assertFalse((Path(tmp)/'session.json').exists())
+
     def test_no_restart_during_host_shutdown(self):
         with tempfile.TemporaryDirectory() as tmp,patch.object(g,'LEASE',Path(tmp)),patch.object(g,'run',return_value=SimpleNamespace(stdout='stopping')) as run:
             (Path(tmp)/'session.json').write_text(json.dumps({'mode':'close','desktop_stopped':True,'binfmt':{}}))

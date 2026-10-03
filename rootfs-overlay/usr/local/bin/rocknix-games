@@ -35,6 +35,23 @@ def send(*words):
 
 
 def main():
+    if sys.argv[1:] == ['controls-status']:
+        try:
+            control = json.loads((BRIDGE / 'controller.json').read_text())
+            label = 'Game' if control['active'] == 'game' else 'Desktop'
+            print(json.dumps({'text': 'Pad: ' + label,
+                              'tooltip': 'Controller mode: ' + control['mode'] + ' · Tap to change'}))
+        except (OSError, ValueError, KeyError):
+            print(json.dumps({'text': ''}))
+        return
+    if sys.argv[1:] == ['controls']:
+        selected = menu('Controller controls', [
+            ('Automatic · follow window focus', 'auto'),
+            ('Desktop controls · pointer and shortcuts', 'desktop'),
+            ('Game controls · Steam Input', 'game'), ('Back', None)])
+        if selected:
+            send('controls', selected)
+        return
     send('refresh')
     time.sleep(.3)
     current = state()

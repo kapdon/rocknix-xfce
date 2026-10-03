@@ -88,6 +88,56 @@ def publish(error=''):
     atomic(PUBLIC, {'mode': mode(), 'games': catalog(), 'busy': active(UNIT), 'error': error})
 
 
+CONTROL = LEASE / 'controls.json'
+CONTROL_PUBLIC = PUBLIC.with_name('controller.json')
+INPUT_STATE = Path('/run/rocknix-desktop-input-state')
+PROC = Path('/proc')
+
+
+def focused_game(tree):
+    """Trust the focused process's service membership, never a window title."""
+    if tree.get('focused') and tree.get('pid'):
+        try:
+            groups = PROC / str(int(tree['pid'])) / 'cgroup'
+            return any(UNIT in line.split(':', 2)[-1].split('/')
+                       for line in groups.read_text().splitlines())
+        except (OSError, ValueError):
+            return False
+    return any(focused_game(n) for n in tree.get('nodes', []) + tree.get('floating_nodes', []))
+
+
+def control_profile(saved, target):
+    profile = saved['controller'][target]
+    run('inputplumber', 'device', '0', 'profile', 'load', profile, timeout=5)
+
+
+def control_tick(saved, previous):
+    selected = json.loads(CONTROL.read_text())['mode']
+    if selected not in ('auto', 'desktop', 'game'):
+        raise ValueError('Invalid controller mode')
+    target = selected
+    if selected == 'auto':
+        env = dict(os.environ, XDG_RUNTIME_DIR='/run/0-runtime-dir',
+                   SWAYSOCK='/run/0-runtime-dir/sway-ipc.0.sock')
+        result = subprocess.run(['swaymsg', '-t', 'get_tree', '-r'], env=env,
+                                capture_output=True, text=True, check=True, timeout=2)
+        target = 'game' if focused_game(json.loads(result.stdout)) else 'desktop'
+    if previous != target:
+        control_profile(saved, target)
+    atomic(CONTROL_PUBLIC, {'mode': selected, 'active': target})
+    return target
+
+
+def control_prepare(saved):
+    original = dict(line.split('=', 1) for line in INPUT_STATE.read_text().splitlines() if '=' in line)
+    native = Path(original['profile'])
+    desktop = BASE / 'input/desktop.yaml'
+    if not native.is_file() or not desktop.is_file():
+        raise ValueError('Controller profiles are unavailable')
+    saved['controller'] = {'desktop': str(desktop), 'game': str(native)}
+    atomic(CONTROL, {'mode': 'auto'}, 0o600)
+
+
 def steam_running():
     # Steam's singleton would otherwise forward the request into an unrelated
     # native session, defeating both lifecycle ownership and Desktop's choice.
@@ -100,6 +150,11 @@ def request(words):
         return
     if words == ['stop']:
         run('systemctl', 'stop', '--no-block', UNIT)
+    elif len(words) == 2 and words[0] == 'controls' and words[1] in ('auto', 'desktop', 'game'):
+        saved = json.loads((LEASE / 'session.json').read_text())
+        if not active(UNIT) or saved['mode'] != 'keep' or 'controller' not in saved:
+            raise ValueError('No Desktop game session is running')
+        atomic(CONTROL, {'mode': words[1]}, 0o600)
     elif len(words) == 2 and words[0] == 'mode' and words[1] in MODES:
         atomic(STATE, {'mode': words[1]}, 0o600)
     elif len(words) == 3 and words[0] == 'launch':
@@ -136,6 +191,10 @@ def recover():
             target.write_text('1' if enabled else '0')
     for name, governor in saved.get('governors', {}).items():
         Path(name).write_text(governor)
+    if 'controller' in saved and active('rocknix-desktop.service'):
+        control_profile(saved, 'desktop')
+    CONTROL_PUBLIC.unlink(missing_ok=True)
+    CONTROL.unlink(missing_ok=True)
     # ExecStopPost runs only after the entire owned cgroup has been reaped.
     state = run('systemctl', 'is-system-running', check=False).stdout.strip()
     if saved['mode'] == 'close' and saved.get('desktop_stopped') and state not in ('stopping', 'offline'):
@@ -178,6 +237,8 @@ def session(app, selected):
             saved['governors'] = {str(p): p.read_text().strip() for pattern in
                 ('devices/system/cpu/cpufreq/policy*/scaling_governor', 'class/devfreq/*/governor')
                 for p in Path('/sys').glob(pattern)}
+        if selected == 'keep':
+            control_prepare(saved)
         atomic(LEASE / 'session.json', saved, 0o600)
         if selected == 'close':
             saved['desktop_stopped'] = True
@@ -189,13 +250,16 @@ def session(app, selected):
         child = subprocess.Popen(['/bin/bash', str(BASE / 'bin/rocknix-games-session'), app, selected],
                                  env={'PATH': '/usr/bin:/usr/sbin:/bin:/sbin', 'HOME': '/storage'})
         # The host watchdog includes compositor memory outside the LXC cgroup.
+        controller = None
         while child.poll() is None:
+            if selected == 'keep':
+                controller = control_tick(saved, controller)
             available = next(int(line.split()[1]) for line in Path('/proc/meminfo').read_text().splitlines()
                              if line.startswith('MemAvailable:'))
             if available < 1536 * 1024:
                 print('Stopping gamescope: less than 1.5 GiB available RAM', flush=True)
                 break
-            time.sleep(1)
+            time.sleep(.5)
         # Exiting the main service reaps Steam, gamescope and game descendants.
         # Durable recovery belongs to ExecStopPost, including on forced kills.
 
