@@ -32,5 +32,5 @@ with tempfile.TemporaryDirectory() as temporary:
     assert run('--unknown').returncode != 0 and not log.exists()
 
 updater = Path('payload/bin/rocknix-lxc-upgrade').read_text()
-assert "runtime.attach('/bin/bash', '-s', '--', '--retained'" in updater
+assert 'bootstrap-container.sh' not in updater  # Updates boot a newly assembled rootfs.
 print('PASS: retained bootstrap never runs APT; missing/pending prerequisites fail; unknown bootstrap modes refused')

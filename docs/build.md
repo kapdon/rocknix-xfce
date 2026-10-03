@@ -33,10 +33,12 @@ ROCKNIX_TRASH_PACKAGES_DIR=/path/to/native/trash-packages bash build-rootfs.sh
 
 The bundle is `dist/rocknix-desktop-rp6-arm64.tar.xz`. Inspect its `build-info` for
 source commit, build time and image provenance. The builder exports independent
-trusted host tools, the persistent Debian runtime and retained-update payloads.
-Never extract over a running installation. For a local retained update, use the
-bundle's `upgrade.sh --help` and supply `--bundle FILE --sha256 HASH`
-with `--check` before `--yes`; ordinary
+trusted host tools and a Debian runtime. This historical export is not accepted
+by the updater. For local update testing, build components with
+`python3 scripts/build-components.py`, assemble the manifest with
+`payload/bin/rocknix-components`, and use the assembled `upgrade.sh` with
+`--bundle dist/components/release.json --sha256 HASH --check` before `--yes`.
+Never extract over a running installation. Ordinary
 users should use the [download installer](../README.md#install-or-update).
 
 Build inputs are defined in [Dockerfile.rootfs](../Dockerfile.rootfs),

@@ -1,10 +1,8 @@
 #!/usr/bin/python3
-"""Update LXC Desktop without replacing its Debian rootfs or private home.
+"""Replace the LXC system from components, preserving private home/shared data.
 
-The checksum establishes integrity, not publisher trust: bundles contain host
-root code and must come from the trusted Desktop build. No old runtime/home
-backup is made. An interrupted update stays guarded and resumes with the same
-bundle; all guest commands execute through mapped LXC attach.
+The old rootfs and host integration are retained only until activation succeeds.
+Interrupted activation rolls back before retrying the same checksum-bound input.
 """
 import argparse
 import fcntl
@@ -12,7 +10,7 @@ import grp
 import hashlib
 import json
 import os
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 import pwd
 import re
 import runpy
@@ -33,9 +31,6 @@ STATE = Path('/run/rocknix-lxc-upgrade')
 UNIT = Path('/storage/.config/system.d/rocknix-desktop.service')
 HOOK = Path('/storage/.config/autostart/999-rocknix-desktop')
 ENTRY = Path('/storage/.config/modules/Desktop Mode.sh')
-FILES = {'build-info', 'desktop-integration.tar.gz', 'README.md', 'uninstall.sh',
-         'upgrade.sh', 'upgrade-lxc.py'}
-UPDATE_RESERVE = 256 * 1024**2
 
 
 def helper_path(name):
@@ -53,31 +48,16 @@ def helper_path(name):
     return path
 
 
-def check_staging_space(target, members):
-    """Reject known insufficient space before extracting or starting maintenance.
-
-    Reserve is headroom, not a guarantee: guest package writes, filesystem
-    metadata and concurrent storage users can still exhaust space later.
-    The incoming replacement rootfs is deliberately excluded from the estimate.
-    """
-    staged = sum(((item.size + 4095) // 4096) * 4096 if item.isfile()
-                 else 4096 for item in members)
-    required = staged + UPDATE_RESERVE
-    available = shutil.disk_usage(target).free
-    if available < required:
-        raise RuntimeError(f'insufficient update staging space: need at least '
-                           f'{required} bytes, available {available}; '
-                           'free space and retry with the same bundle')
-
-
 def select_layout(project):
     """Require the complete canonical layout; never infer fresh guest data."""
     host = project / 'managed/host'
     if os.path.lexists(project / '.fresh-install.json'):
         raise RuntimeError('finish the guarded fresh installation before updating')
     if not all(os.path.lexists(path) for path in
-               (host, host / 'state', project / 'data/rootfs', project / 'data/home')):
+               (host, host / 'state', project / 'data/home')):
         raise RuntimeError('incomplete Desktop storage layout; run Install to replace Desktop data')
+    if not os.path.lexists(project / 'data/rootfs') and not os.path.lexists(host / 'state/upgrade-in-progress.json'):
+        raise RuntimeError('missing Desktop rootfs')
     return host, project / 'data', host / 'state', host / 'state/upgrade-in-progress.json'
 
 
@@ -181,63 +161,38 @@ def atomic(path, data, mode=0o644):
         temporary.unlink(missing_ok=True)
 
 
-def extract(bundle, expected, target):
-    """Extract trusted host components, never an incoming replacement rootfs."""
-    if bundle.suffix == '.json':
-        with bundle.open('rb') as stream:
-            if hashlib.file_digest(stream, 'sha256').hexdigest() != expected:
-                raise RuntimeError('component manifest checksum mismatch')
-        components = runpy.run_path(str(helper_path('rocknix-components')))
-        value = components['release'](json.loads(bundle.read_text()))
+def extract(bundle, expected, target, assembled=None, components=None):
+    """Verify and assemble a complete replacement from immutable components."""
+    if bundle.suffix != '.json':
+        raise RuntimeError('updates require a component release manifest; legacy exports are unsupported')
+    with bundle.open('rb') as stream:
+        if hashlib.file_digest(stream, 'sha256').hexdigest() != expected:
+            raise RuntimeError('component manifest checksum mismatch')
+    components = components or runpy.run_path(str(helper_path('rocknix-components')))
+    value = components['release'](json.loads(bundle.read_text()))
+    if assembled is None:
         files = components['materialize'](value, bundle.parent / 'components',
                                           'kapdon/rocknix-desktop', 'update')
         assembled = target / 'components-candidate'
         components['assemble'](value, files, assembled, 'update')
-        # The union payload is streamed through mapped LXC later. Do not copy
-        # the staged guest files onto the installed writable Debian filesystem.
-        shutil.rmtree(assembled / 'rootfs')
-        for source in assembled.iterdir():
-            source.rename(target / source.name)
-        assembled.rmdir()
-        return validate_candidate(target)
-    with bundle.open('rb') as stream:
-        if hashlib.file_digest(stream, 'sha256').hexdigest() != expected:
-            raise RuntimeError('bundle checksum mismatch')
-        stream.seek(0)
-        with tarfile.open(fileobj=stream, mode='r:xz') as archive:
-            selected = []
-            seen = set()
-            for member in archive.getmembers():
-                name = member.name.removeprefix('./').rstrip('/')
-                path = PurePosixPath(name)
-                if not name or name == '.':
-                    continue
-                if path.is_absolute() or '..' in path.parts or str(path) != name:
-                    raise RuntimeError('unsafe archive path')
-                if not (name in FILES or path.parts[0] in ('payload', 'host-tools')):
-                    continue
-                if name in seen or not (member.isfile() or member.isdir() or member.issym() or member.islnk()):
-                    raise RuntimeError('duplicate or special host archive member')
-                seen.add(name)
-                member.name = name
-                selected.append(member)
-            links = {item.name for item in selected if item.issym() or item.islnk()}
-            regular = {item.name for item in selected if item.isfile()}
-            for member in selected:
-                if any(str(parent) in links for parent in PurePosixPath(member.name).parents):
-                    raise RuntimeError('archive attempts to write through a link')
-                if member.issym() and not member.name.startswith('host-tools/'):
-                    raise RuntimeError('host payload symlink is not allowed')
-                if member.islnk():
-                    link = member.linkname.removeprefix('./')
-                    if not link.startswith('host-tools/') or link not in regular or '..' in PurePosixPath(link).parts:
-                        raise RuntimeError('unsafe archive hardlink')
-                    member.linkname = link
-            # Absolute Debian symlinks are needed inside the independently
-            # sandboxed tools tree. No file may be extracted below a link.
-            check_staging_space(target, selected)
-            archive.extractall(target, members=selected, filter='fully_trusted')
-    return validate_candidate(target)
+    else:
+        # The downloader has already assembled this root-owned candidate under
+        # the installation lock. Consume it once instead of unpacking twice.
+        assembled = assembled.absolute()
+        safe_directory(assembled)
+        no_mounts(assembled)
+        if assembled == target or assembled in target.parents or target in assembled.parents:
+            raise RuntimeError('overlapping component staging paths')
+        if json.loads((assembled / 'components.json').read_text()) != value:
+            raise RuntimeError('staged component manifest mismatch')
+        validate_candidate(assembled)
+    for source in assembled.iterdir():
+        source.rename(target / source.name)
+    assembled.rmdir()
+    revision = validate_candidate(target)
+    if (target / 'rootfs/etc/rocknix-desktop-build-info').read_bytes() != (target / 'build-info').read_bytes():
+        raise RuntimeError('replacement rootfs provenance mismatch')
+    return revision
 
 
 def validate_candidate(target):
@@ -316,6 +271,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--bundle', type=Path, required=True)
     parser.add_argument('--sha256', required=True)
+    parser.add_argument('--assembled', type=Path, help='trusted installer staging, consumed by --yes')
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument('--check', action='store_true')
     mode.add_argument('--yes', action='store_true')
@@ -340,101 +296,74 @@ def main():
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         configure_layout()
         idle()
+        components = runpy.run_path(str(helper_path('rocknix-components')))
+        storage = runpy.run_path(str(helper_path('rocknix-lxc-storage')))
+        replacement_api = runpy.run_path(str(helper_path('rocknix-lxc-replace')))
+        transaction = replacement_api['Replacement'](globals())
+        if transaction.load(args.sha256):
+            if args.check:
+                raise RuntimeError('interrupted update requires --yes recovery')
+            work = transaction.work
+            api = runpy.run_path(str(work / 'payload/bin/rocknix-lxc'))
+            if STATE.exists():
+                api['Runtime'](work / 'host-tools', work / 'rootfs', STATE,
+                               recovery_only=True).recover()
+            transaction.rollback()
+            committed = transaction.record['phase'] == 'committed'
+            transaction.finish()
+            if committed:
+                print('Component update cleanup complete; home and shared files preserved.')
+                return
+        elif STATE.exists():
+            raise RuntimeError('unrecognized maintenance runtime requires recovery')
         validate_existing_storage(DATA)
-        retained = retained_marker(BASE)
-        if 'ROCKNIX_LXC_RUNTIME=1\n' not in (ROOTFS / 'etc/rocknix-desktop-release').read_text():
-            raise RuntimeError('installed Desktop LXC runtime marker is invalid')
-        guard = GUARD
-        previous = None
-        if guard.exists() or guard.is_symlink():
-            if guard.is_symlink() or guard.stat().st_uid != 0:
-                raise RuntimeError('unsafe update journal')
-            previous = json.loads(guard.read_text())
-            if previous.get('format') != 1 or previous.get('sha256') != args.sha256:
-                raise RuntimeError('resume the interrupted update with its original bundle/checksum')
+        retained_marker(BASE)
         candidate = Path(tempfile.mkdtemp(prefix='upgrade-lxc.', dir=WORKSPACE))
-        keep = False
         runtime = None
         try:
-            revision = extract(args.bundle, args.sha256, candidate)
-            packages = candidate / 'payload/guest/trash-packages.tar'
-            package_updater = candidate / 'payload/guest/update-trash-packages.py'
-            x11_packages = candidate / 'payload/guest/xwayland-packages.tar'
-            if not packages.is_file() or not package_updater.is_file() or not x11_packages.is_file():
-                raise RuntimeError('candidate lacks the required guest package update payload')
-            api = runpy.run_path(str(candidate / 'payload/bin/rocknix-lxc'))
-            if STATE.exists():
-                if not previous or args.check:
-                    raise RuntimeError('unfinished maintenance container requires update resume')
-                old = Path(previous['work'])
-                if old.parent != WORKSPACE or not old.name.startswith('upgrade-lxc.'):
-                    raise RuntimeError('unrecognized previous staging path')
-                safe_directory(old)
-                tools = old / 'host-tools' if (old / 'host-tools').exists() else BASE / 'host-tools'
-                api['Runtime'](tools, ROOTFS, STATE, recovery_only=True).recover()
-            print(f'Candidate: {revision}; rootfs, apps and home will stay in place.', flush=True)
+            revision = extract(args.bundle, args.sha256, candidate,
+                               args.assembled if args.yes else None, components)
+            storage['shift_rootfs'](candidate / 'rootfs', dry_run=True)
+            print(f'Candidate: {revision}; replacing system packages and system settings; '
+                  'preserving home and shared files.', flush=True)
             if args.check:
                 return
-            record = {'format': 1, 'sha256': args.sha256, 'commit': revision,
-                      'work': str(candidate), 'phase': 'maintenance'}
-            atomic(guard, (json.dumps(record) + '\n').encode(), 0o600)
-            keep = True
-            if previous and Path(previous['work']) != candidate:
-                remove_stage(Path(previous['work']))
-            runtime = api['Runtime'](candidate / 'host-tools', ROOTFS, STATE)
+            storage['shift_rootfs'](candidate / 'rootfs')
+            transaction.prepare(candidate, args.sha256, revision)
+            api = runpy.run_path(str(candidate / 'payload/bin/rocknix-lxc'))
+            runtime = api['Runtime'](candidate / 'host-tools', candidate / 'rootfs', STATE)
             runtime.start()
             result = runtime.attach('/usr/bin/python3', '-', timeout=120,
                 input=(candidate / 'payload/guest/check-container.py').read_text())
             if result.returncode:
-                raise RuntimeError('installed container is invalid: ' + result.stdout + result.stderr)
-            print(result.stdout, flush=True)
-            result = runtime.attach('/bin/bash', '-s', '--', '--retained', timeout=300,
-                input=(candidate / 'payload/guest/bootstrap-container.sh').read_text())
-            if result.returncode:
-                raise RuntimeError('container bootstrap failed: ' + result.stdout + result.stderr)
-            for packages in (packages, x11_packages):
-                with packages.open('rb') as stream:
-                    subprocess.run(runtime.command('lxc-attach', '-P', runtime.configs, '-n', runtime.name,
-                        '--clear-env', '--', '/bin/sh', '-ec', 'cat > /run/desktop-packages.tar'),
-                        stdin=stream, check=True, timeout=120)
-                result = runtime.attach('/usr/bin/unshare', '--net', '/usr/bin/python3', '-',
-                                        '/run/desktop-packages.tar', input=package_updater.read_text(), timeout=300)
-                if result.returncode:
-                    raise RuntimeError('container package update failed: ' + result.stdout + result.stderr)
-                print(result.stdout, flush=True)
-            with (candidate / 'desktop-integration.tar.gz').open('rb') as stream:
-                subprocess.run(runtime.command('lxc-attach', '-P', runtime.configs, '-n', runtime.name,
-                    '--clear-env', '--', '/bin/sh', '-ec', 'cat > /run/desktop-integration.tar.gz'),
-                    stdin=stream, check=True, timeout=120)
-            updater = candidate / 'payload/guest/rocknix-container-update'
-            result = runtime.attach('/usr/bin/python3', '-', '/run/desktop-integration.tar.gz',
-                                    input=updater.read_text(), timeout=180)
-            if result.returncode:
-                raise RuntimeError('container integration update failed: ' + result.stdout + result.stderr)
-            print(result.stdout, flush=True)
-            conflicts = json.loads(result.stdout)['preserved_local_edits']
-            if any(name.startswith('etc/systemd/') for name in conflicts):
-                raise RuntimeError('resolve preserved systemd configuration before activation: ' + ', '.join(conflicts))
+                raise RuntimeError('replacement container is invalid: ' + result.stdout + result.stderr)
             runtime.close()
             runtime = None
-            record['phase'] = 'installing-host'
-            atomic(guard, (json.dumps(record) + '\n').encode(), 0o600)
-            install_host(candidate)
+            no_mounts(candidate)
+            transaction.activate()
+            # Keep trusted candidate tools available for interruption recovery.
+            install_host(candidate, preserve_candidate=True)
             subprocess.run([str(BASE / 'bin/preflight')], check=True,
                            env={**os.environ, 'ROCKNIX_UPGRADE_CHECK': '1'})
-            if retained is not None:
-                retained.unlink()
-            guard.unlink()
+            validate_existing_storage(DATA)
             os.sync()
-            keep = False
-            print('LXC update complete. Apps and home retained; open Tools > Desktop Mode.', flush=True)
-        finally:
+            transaction.save('committed')
+            transaction.finish()
+            print('Component update complete. Home and shared files preserved; '
+                  'open Tools > Desktop Mode.', flush=True)
+        except BaseException:
             if runtime is not None:
                 runtime.close()
-            if not keep:
+                runtime = None
+            if os.path.lexists(GUARD) and transaction.record and transaction.record['phase'] != 'committed':
+                transaction.rollback()
+                transaction.finish()
+            raise
+        finally:
+            if not os.path.lexists(GUARD) and candidate.exists():
                 remove_stage(candidate)
-            else:
-                print(f'Update guarded; rerun with the same bundle to resume. Candidate staging: {candidate}', flush=True)
+            elif os.path.lexists(GUARD):
+                print('Update guarded; rerun with the same component manifest to recover.', flush=True)
 
 
 if __name__ == '__main__':

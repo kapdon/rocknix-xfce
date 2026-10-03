@@ -33,92 +33,17 @@ with tempfile.TemporaryDirectory() as directory:
     assert outside.read_text() == 'untouched'
 print('PASS: retired host payload files removed without following redirects')
 extract = api['extract']
-metadata = 'commit=' + 'a' * 40 + '\narchitecture=arm64\n'
-
-def add(archive, name, data):
-    member = tarfile.TarInfo(name)
-    member.size = len(data)
-    archive.addfile(member, io.BytesIO(data))
-
-integration = io.BytesIO()
-with tarfile.open(fileobj=integration, mode='w:gz') as archive:
-    add(archive, 'etc/rocknix-desktop-release', b'ROCKNIX_LXC_RUNTIME=1\n')
-    add(archive, 'etc/rocknix-desktop-build-info', metadata.encode())
-
 with tempfile.TemporaryDirectory() as directory:
     base = Path(directory)
-    for case in ('valid', 'missing-paths', 'symlink-parent', 'hardlink-symlink'):
-        bundle = base / (case + '.tar.xz')
-        target = base / case
-        target.mkdir()
-        with tarfile.open(bundle, 'w:xz') as archive:
-            add(archive, 'build-info', metadata.encode())
-            add(archive, 'desktop-integration.tar.gz', integration.getvalue())
-            add(archive, 'rootfs/do-not-extract', b'guest rootfs')
-            add(archive, 'payload/bin/test', b'host launcher')
-            if case != 'missing-paths':
-                add(archive, 'payload/bin/rocknix-desktop-paths', b'canonical paths')
-            add(archive, 'host-tools/usr/lib/test', b'host library')
-            link = tarfile.TarInfo('host-tools/lib')
-            link.type = tarfile.SYMTYPE
-            link.linkname = '/usr/lib'
-            archive.addfile(link)
-            if case == 'symlink-parent':
-                add(archive, 'host-tools/lib/escape', b'bad')
-            if case == 'hardlink-symlink':
-                hard = tarfile.TarInfo('host-tools/evil')
-                hard.type = tarfile.LNKTYPE
-                hard.linkname = 'host-tools/lib'
-                archive.addfile(hard)
-        digest = hashlib.sha256(bundle.read_bytes()).hexdigest()
-        with patch.dict(extract.__globals__, safe_directory=lambda path: None):
-            if case == 'valid':
-                assert extract(bundle, digest, target) == 'a' * 40
-                assert not (target / 'rootfs').exists()
-                assert (target / 'payload/bin/test').read_bytes() == b'host launcher'
-                try:
-                    extract(bundle, '0' * 64, target)
-                except RuntimeError:
-                    pass
-                else:
-                    raise AssertionError('wrong checksum accepted')
-            else:
-                try:
-                    extract(bundle, digest, target)
-                except RuntimeError:
-                    pass
-                else:
-                    raise AssertionError('unsafe link graph accepted')
-print('PASS: LXC host update excludes replacement rootfs and rejects checksum/link attacks')
-
-# A low-space refusal must precede extraction, leaving the candidate empty.
-space_check = api['check_staging_space']
-member = tarfile.TarInfo('payload/bin/probe'); member.size = 4097
-required = api['UPDATE_RESERVE'] + 8192
-with patch.object(api['shutil'], 'disk_usage', return_value=SimpleNamespace(free=required)):
-    space_check(Path('/fixture'), [member])
-with patch.object(api['shutil'], 'disk_usage', return_value=SimpleNamespace(free=required - 1)):
-    try:
-        space_check(Path('/fixture'), [member])
-    except RuntimeError as error:
-        assert 'insufficient update staging space' in str(error)
-    else:
-        raise AssertionError('rounded staging threshold ignored')
-with tempfile.TemporaryDirectory() as directory:
-    base = Path(directory)
-    bundle = base / 'candidate.tar.xz'
+    bundle = base / 'legacy.tar.xz'; bundle.write_bytes(b'legacy')
     target = base / 'stage'; target.mkdir()
-    with tarfile.open(bundle, 'w:xz') as archive:
-        add(archive, 'payload/bin/probe', b'candidate')
-    digest = hashlib.sha256(bundle.read_bytes()).hexdigest()
-    with patch.object(api['shutil'], 'disk_usage', return_value=SimpleNamespace(free=0)):
-        try:
-            extract(bundle, digest, target)
-        except RuntimeError as error:
-            assert 'insufficient update staging space' in str(error)
-        else:
-            raise AssertionError('low-space candidate accepted')
+    try:
+        extract(bundle, hashlib.sha256(bundle.read_bytes()).hexdigest(), target)
+        raise AssertionError('legacy export accepted for update')
+    except RuntimeError as error:
+        assert 'component release manifest' in str(error)
     assert not list(target.iterdir())
+print('PASS: legacy export updates rejected before extraction')
 
 # Simulate ENOSPC at the durable-write boundary: old control files and guards
 # must survive, and the incomplete atomic temporary must be removed.
@@ -160,7 +85,7 @@ for bad in (None, 'rootfs', 'home', 'symlink'):
         else:
             assert bad is None
 source = Path('payload/bin/rocknix-lxc-upgrade').read_text()
-assert 'shift_rootfs' not in source and 'migrate_home' not in source
+assert "shift_rootfs'](candidate / 'rootfs'" in source and 'migrate_home' not in source
 print('PASS: LXC updates validate mapped roots without traversing or re-owning guest data')
 
 select = api['select_layout']

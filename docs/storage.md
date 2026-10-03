@@ -29,7 +29,10 @@ mounts/sockets live under `/run`.
 
 ## Preservation and backup
 
-Update preserves rootfs, packages, accounts/passwords and home in place.
+Update assembles a fresh component rootfs and replaces the old system, including
+packages and accounts/passwords. It preserves `data/home` and shared storage
+without copying or changing their ownership. A temporary old rootfs enables
+rollback until activation succeeds, then is removed.
 Uninstall removes recognized native integration and retains data/tools.
 **Install replaces retained data after the overwrite warning**; it does not
 reactivate a retained home. Guarded partial state must not be launched or

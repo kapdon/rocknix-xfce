@@ -91,7 +91,8 @@ default. The warning appears on every Install/Update invocation, and `--yes`
 cannot bypass it. Eligibility does not establish hardware support.
 
 The installer displays installed/available revisions and asks before proceeding.
-**Update preserves apps, accounts and home. Install replaces Desktop-owned apps,
+**Update replaces the container system and installed packages while preserving
+home, user settings and shared files. Install replaces Desktop-owned apps,
 home and settings without a recovery copy**, including retained data after
 Uninstall. `--yes` accepts the selected operation, including this deletion;
 the untested-device warning still requires an answer.

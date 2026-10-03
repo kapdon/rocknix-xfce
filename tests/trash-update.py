@@ -74,7 +74,4 @@ with tempfile.TemporaryDirectory() as temporary:
                 assert 'newer than the candidate' in str(error)
             else:
                 raise AssertionError('fresh image downgrade accepted')
-source = (repo / 'payload/bin/rocknix-lxc-upgrade').read_text()
-assert source.index('candidate lacks the required guest package') < source.index('runtime.start()')
-assert "runtime.attach('/usr/bin/unshare', '--net', '/usr/bin/python3'" in source
 print('PASS: flat package payload, pre-write rejection, optional-family plans and retained security no-downgrade')

@@ -10,13 +10,13 @@ python3 tests/container-health.py
 python3 tests/trash-packaging.py
 python3 tests/trash-policy.py
 python3 tests/trash-update.py
-python3 tests/xwayland-packages.py
 python3 tests/lxc-access.py
 python3 tests/lxc-network.py
 python3 tests/lxc-runtime.py
 python3 tests/lxc-desktop.py
 python3 tests/lxc-update.py
 python3 tests/lxc-upgrade.py
+fakeroot -- python3 tests/lxc-replacement.py
 python3 tests/lxc-bootstrap.py
 python3 tests/lxc-maintenance-idle.py
 python3 tests/lxc-password.py

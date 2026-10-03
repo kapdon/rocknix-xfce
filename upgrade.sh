@@ -1,5 +1,5 @@
 #!/bin/bash
-# Update LXC while preserving installed applications and home.
+# Replace the LXC system from components, preserving home and shared files.
 set -Eeuo pipefail
 self_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 for helper in "$self_dir/upgrade-lxc.py" "$self_dir/payload/bin/rocknix-lxc-upgrade"; do

@@ -20,7 +20,7 @@ misses; they are not the release artifact store.
 | MPV media | Pinned sources, codec patches, compiler snapshot |
 | Fuzzel | Launcher, Pixman and protocol sources/recipes, compiler snapshot |
 | Keyboard | Sources, layout/patches, compiler snapshot |
-| Xwayland | Satellite sources, signed X11 packages, package validation, compiler snapshot |
+| Xwayland | Satellite sources, compiler snapshot |
 | Guest integration | Overlay scripts, configuration, desktop defaults |
 | Host integration | Host helpers, installer, service/input files, guest updater |
 | Host theme | GTK configuration and ROCKNIX theme assets |
@@ -29,7 +29,7 @@ misses; they are not the release artifact store.
 Changing Waybar CSS rebuilds only guest integration. A GTK theme edit rebuilds
 guest integration and host theme. Changing an MPV patch rebuilds MPV media.
 Changing the Trash family rebuilds its transaction payload and fresh-install
-base plus the Xwayland offline package export. A base-only bootstrap change consumes the cached package transaction instead
+base. A base-only bootstrap change consumes the cached package artifacts instead
 of rebuilding the native packages. Changing the packaging format/validator rebuilds components conservatively.
 
 Keys contain source bytes, modes, links, selected Docker stages, build architecture
@@ -133,21 +133,23 @@ does not rebuild components. Publication failure or benchmark mode leaves the
 changelog untouched. The update preserves unrelated concurrent commits and fails
 if someone edits the changelog during the build; it never force-pushes `dev`.
 
-The installer initially stages the non-base profile, using candidate-owned host
-tools for installation classification. It downloads the base only for Install.
-The updater binds its existing interruption journal to the immutable manifest
-checksum. It performs the existing mapped-container health checks, audited APT
-transaction and host activation sequence. It does not execute guest-writable
-binaries as host root or replace retained rootfs/home/accounts.
+Install and Update assemble the same complete component set, including the guest
+base. Updates replace `data/rootfs`; they never run APT or copy an overlay into
+the old container. Existing monolithic LXC installations with the separated
+storage layout migrate through this same path. Home and shared storage are
+preserved; packages, passwords and edits inside the old rootfs are replaced.
 
-This first version optimizes **build reuse**. Device updates stage the complete
-non-base component set, and assemble one complete guest managed-file union. They
-do not yet transfer only changed files or reuse an installed host runtime based
-on a receipt. That preserves current local-edit, deletion, package simulation,
-newer-security-version and recovery behavior without inventing installed state.
-The package transaction may decide no work is needed; a release reference is not
-proof a package was installed. Debian transactions are not advertised as atomic
-rollback. The full fresh-install archive is no longer a routine CI output.
+The updater checks the candidate in an isolated mapped maintenance container,
+then switches rootfs and trusted host integration under a checksum-bound journal.
+Activation failure restores the old rootfs and host integration. After successful
+activation it removes the old rootfs. Repeating the same update after interruption
+finishes cleanup or rolls back and retries. Staging requires room for the complete
+new system and temporary host backup; the old rootfs is renamed, not copied.
+
+Build reuse remains component-based: unchanged immutable artifacts need no
+recompilation or recompression. Device updates still assemble a whole new rootfs.
+The `trash-packages` artifact remains a build-cache dependency for the guest base;
+neither install nor update delivers an offline package transaction to the device.
 
 ## Validation and remaining acceptance
 
@@ -160,8 +162,8 @@ build, warm baseline and exact Apps/Settings toggle-fix replay.
 updater application with small producer fixtures. It checks dependency invalidation,
 zero producers on a warm run, one small compression on a CSS change, fresh-runner
 metadata-only resolution, preserved ownership/setuid/symlinks, full union retention,
-and fail-before-extraction corruption/path checks. Existing installer/update tests
-continue to cover the legacy format and transaction safeguards.
+and fail-before-extraction corruption/path checks. Replacement tests exercise interruption boundaries, rollback and home identity
+preservation. These filesystem fixtures do not establish RP6 runtime acceptance.
 
 After a real local build, run `python3 scripts/benchmark-components.py` for three
 warm and three CSS-change trials using the real cached artifacts. It edits a
@@ -170,7 +172,7 @@ input sizes in `dist/component-benchmark/results.json`. Use a constrained Ubuntu
 container for runner-like packaging measurements; retain the component store
 and the same native-package override environment used for the initial build. Fixture timings are correctness evidence, not GitHub performance
 claims. Native ARM64 branch build timing and component publication have been measured.
-Development-channel promotion and RP6 fresh-install, retained-update and
+Development-channel promotion and RP6 fresh-install, replacement-update and
 interruption acceptance remain separate gates before calling this production
 validated. No hardware operation is part of source or build-performance testing.
 
@@ -179,10 +181,6 @@ Implementation references: [BuildKit GHA cache authentication](https://docs.dock
 ## Xwayland delivery
 
 The Xwayland component carries the guest-owned Satellite bridge and its source
-and license files, plus a bounded offline X11 package transaction for retained
-updates. Fresh installs get Debian X11 packages from the guest base. Both
-profiles include the bridge; retained updates install only the approved package
-set, preserving newer versions and refusing unrelated APT changes.
-
-The format-2 bootstrap also reads older ten-component manifests. A new manifest
-uses its checksum-bound bootstrap to understand the added Xwayland role.
+and license files. Debian X11 dependencies are installed in the guest base.
+Install and Update both receive them in the new rootfs; there is no retained
+container package updater or compatibility path for older ten-component manifests.

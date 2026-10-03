@@ -55,7 +55,7 @@ confirm_action() {
   if [ "$action" = Install ]; then
     printf 'Install Desktop Mode? This replaces Desktop apps, home, profiles and settings. No recovery copy is kept. Shared files and native ROCKNIX stay untouched. [y/N] '
   else
-    printf 'Update Desktop Mode? Installed apps, home and settings will be preserved. [y/N] '
+    printf 'Update Desktop Mode? Replace the container system and installed packages. Home, user settings and shared files are preserved. [y/N] '
   fi
   if ! read_confirmation answer; then printf '\nCancelled.\n'; return 1; fi
   case "$answer" in y|Y|yes|YES) return 0 ;; *) printf 'Cancelled.\n'; return 1 ;; esac
@@ -175,7 +175,7 @@ main() {
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --help|-h)
-        printf 'Usage: bash install.sh [--dev | --release TAG] [--install | --update | --uninstall] [--check | --yes]\nDefault: latest published stable version. --dev selects rolling development; --release TAG selects a version. Update preserves data; Install replaces Desktop apps and home. Uninstall removes integration and retains data without downloading a bundle.\n--yes accepts the operation (including deletion for Install), but never skips an untested-device confirmation.\nOther SM8550/QCS8550 installs require confirmation; other chipsets are currently out of scope.\n--check validates prerequisites without changes; with --uninstall it validates installed removal.\n'
+        printf 'Usage: bash install.sh [--dev | --release TAG] [--install | --update | --uninstall] [--check | --yes]\nDefault: latest published stable version. --dev selects rolling development; --release TAG selects a version. Update replaces the container system and packages, preserving home and shared files; Install replaces Desktop apps and home. Uninstall removes integration and retains data without downloading a bundle.\n--yes accepts the operation (including deletion for Install), but never skips an untested-device confirmation.\nOther SM8550/QCS8550 installs require confirmation; other chipsets are currently out of scope.\n--check validates prerequisites without changes; with --uninstall it validates installed removal.\n'
         return ;;
       --check) check=1; shift ;;
       --yes) yes=1; shift ;;
@@ -266,8 +266,7 @@ main() {
       "$url/$helper" -o "$STAGING/component-installer.py"
     [ "$(wc -c <"$STAGING/component-installer.py")" -eq "$helper_size" ] || fail 'component bootstrap size mismatch'
     printf '%s  %s\n' "$helper_sha" "$STAGING/component-installer.py" | sha256sum -c -
-    # Resolve the trusted health-probe/update profile before fetching a base.
-    # Existing installations never need the fresh-install Debian seed.
+    # Both actions use a complete new guest system; home lives outside it.
     python3 "$STAGING/component-installer.py" --manifest "$STAGING/$ASSET" \
       --repository "$REPOSITORY" --cache "$STAGING/components" --profile update --output "$STAGING/bundle"
   else
@@ -286,7 +285,15 @@ main() {
     fail "device profile rejected; see diagnostics in $STAGING. No Desktop data replaced"
   fi
   cat "$STAGING/device-profile.json"
-  detect_installation
+  if [ -e "$BASE/state/upgrade-in-progress.json" ]; then
+    # Let the checksum-bound updater recover its transaction; never offer a
+    # destructive fresh install merely because replacement was interrupted.
+    INSTALL_STATUS=healthy
+    INSTALL_REASON='component update recovery required'
+    INSTALLED_REVISION=
+  else
+    detect_installation
+  fi
   printf 'Installed state: %s — %s\nAvailable: %s (%s)\n' "$INSTALL_STATUS" "$INSTALL_REASON" "$VERSION" "$revision"
   local action=Install
   [ "$INSTALL_STATUS" != healthy ] || action=Update
@@ -309,13 +316,8 @@ main() {
     # Close our descriptor first to avoid deadlocking the child process.
     flock -u 9
     exec 9>&-
-    bash "$STAGING/bundle/upgrade.sh" --bundle "$STAGING/$ASSET" --sha256 "$expected" --yes
+    bash "$STAGING/bundle/upgrade.sh" --bundle "$STAGING/$ASSET" --sha256 "$expected" --assembled "$STAGING/bundle" --yes
   else
-    if [ "$release_format" = 2 ]; then
-      rm -rf -- "$STAGING/bundle"
-      python3 "$STAGING/component-installer.py" --manifest "$STAGING/$ASSET" \
-        --repository "$REPOSITORY" --cache "$STAGING/components" --profile install --output "$STAGING/bundle"
-    fi
     bash "$STAGING/bundle/install-device.sh" --replace
   fi
   record_release
