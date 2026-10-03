@@ -1,8 +1,8 @@
 # Component build and release format
 
-Development builds use `scripts/build-components.py`. Stable releases and the
-explicit offline `build-rootfs.sh` builder still support the existing full
-archive format. The download installer reads both formats.
+Local, development and versioned builds use `scripts/build-components.py`.
+`build-rootfs.sh` invokes the same component builder. Historical full archives
+remain readable for explicit fresh installs; Update requires a component manifest.
 
 The performance target is the configuration-only GitHub Actions build. Resolve
 small immutable component descriptors **before** setting up Buildx. If a matching

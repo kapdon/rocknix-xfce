@@ -18,5 +18,5 @@ for path in paths:
 readme = Path('README.md').read_text()
 assert 'navigation and the full terminal layout' not in readme
 assert 'does not replace the native ROCKNIX keyboard' in readme
-assert '(cd dist && sha256sum -c rocknix-desktop-rp6-arm64.tar.xz.sha256)' in Path('docs/build.md').read_text()
+assert 'dist/components/release.json' in Path('docs/build.md').read_text()
 print('PASS: all checked-in documentation links, Desktop-only keyboard and checksum instructions')

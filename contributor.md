@@ -8,8 +8,8 @@ owner's authorization for those actions. Documentation-only work needs link
 and source-claim checks, not a device reinstall or fresh runtime build.
 
 Validate locally **before pushing**: run `bash tests/check.sh`, commit locally,
-then run `bash build-rootfs.sh` from that clean commit and verify its checksum
-and `build-info`. Test affected installation, desktop and uninstall behavior on
+then run `bash build-rootfs.sh` from that clean commit and verify the manifest/component checksums
+and assembled `build-info`. Test affected installation, desktop and uninstall behavior on
 the RP6 with that local bundle when changing those paths. Preserve user data
 unless the owner explicitly authorizes disposable test data. Record what was actually tested and any remaining gaps.
 

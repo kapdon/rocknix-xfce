@@ -137,7 +137,7 @@ grep -q 'BindsTo=sway.service' payload/systemd/rocknix-desktop.service
 grep -q '^source /etc/profile$' payload/bin/preflight
 grep -q 'INPUT_STATE_PRESENT=1' payload/bin/restore-emulationstation
 grep -q 'ROCKNIX_SWAY_RUNTIME=1' rootfs-overlay/etc/rocknix-desktop-release
-grep -q -- '--iidfile' build-rootfs.sh
+grep -q 'scripts/build-components.py' build-rootfs.sh
 python3 -m json.tool rootfs-overlay/etc/xdg/waybar/config.jsonc >/dev/null
 if rg -q '%-' rootfs-overlay/etc/xdg/waybar/config.jsonc; then
   printf 'FAIL: Waybar chrono format contains an unsupported modifier\n' >&2; exit 1
@@ -148,6 +148,7 @@ bash tests/persistence.sh
 bash tests/upgrade.sh
 bash tests/release-selection.sh
 bash tests/release-publication.sh
+python3 tests/versioned-components.py
 python3 tests/development-changelog.py
 bash tests/installer-flow.sh
 python3 tests/installer-command.py

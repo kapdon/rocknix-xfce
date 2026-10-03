@@ -23,57 +23,20 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y fakeroot
       - name: Check source
         run: bash tests/check.sh
-      - name: Set up cached builder
-        uses: docker/setup-buildx-action@v3
-      - name: Build mount-aware Debian packages on native ARM64
-        uses: docker/build-push-action@v6
-        with:
-          context: build-support/trash
-          file: build-support/trash/Dockerfile.packages
-          target: artifact
-          platforms: linux/arm64
-          outputs: type=local,dest=build/trash-packages
-          cache-from: type=gha,scope=rocknix-trash-arm64
-          cache-to: type=gha,scope=rocknix-trash-arm64,mode=max
-      - name: Build upstream touchscreen launcher
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: build-support/fuzzel/Dockerfile
-          target: artifact
-          platforms: linux/arm64
-          outputs: type=local,dest=build/fuzzel
-          cache-from: type=gha,scope=rocknix-fuzzel-arm64
-          cache-to: type=gha,scope=rocknix-fuzzel-arm64,mode=max
-      # Materialize remote cache hits. Metadata-only cacheonly results may not
-      # survive the later build-rootfs.sh calls without their cache importer.
-      - name: Cache ARM64 runtime layers
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: Dockerfile.rootfs
-          platforms: linux/arm64
-          build-contexts: |
-            trash-packages=./build/trash-packages
-            fuzzel-artifacts=./build/fuzzel
-          load: true
-          cache-from: type=gha,scope=rocknix-desktop-arm64
-          cache-to: type=gha,scope=rocknix-desktop-arm64,mode=max
-      - name: Cache trusted ARM64 host tools
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: build-support/lxc/Dockerfile.host-tools
-          platforms: linux/arm64
-          load: true
-          cache-from: type=gha,scope=rocknix-host-tools-arm64
-          cache-to: type=gha,scope=rocknix-host-tools-arm64,mode=max
-      - name: Build ARM64 runtime
+      - name: Resolve immutable components
+        id: components
         env:
-          ROCKNIX_TRASH_PACKAGES_DIR: ${{ github.workspace }}/build/trash-packages
-        run: bash build-rootfs.sh
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/build-components.py --repository "$GITHUB_REPOSITORY" --plan
+      - name: Set up builder for missing components
+        if: steps.components.outputs.needs_docker == 'true'
+        uses: docker/setup-buildx-action@v3
+      - name: Build missing components
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/build-components.py --repository "$GITHUB_REPOSITORY"
       - name: Publish versioned release
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.version }}
-        run: bash scripts/publish-release.sh "$RELEASE_TAG"
+        run: python3 scripts/publish-versioned-components.py "$RELEASE_TAG" --repository "$GITHUB_REPOSITORY"
