@@ -29,6 +29,8 @@ python3 tests/settings-label.py
 python3 tests/games.py
 python3 tests/gamescope-display.py
 python3 tests/gamescope-apps.py
+python3 tests/gamescope-session.py
+python3 tests/fex-server.py
 python3 tests/display-policy.py
 python3 tests/display-host.py
 python3 tests/display-metrics.py

@@ -27,8 +27,8 @@ with tempfile.TemporaryDirectory() as directory:
         command = ['wine', '/games/a game.exe', '$(touch /tmp/not-a-command)', '--flag']
         app['main'](command)
         argv = run.call_args.args[0]
-        assert argv[:4] == ['/usr/local/bin/rocknix-gamescope', '--', '/usr/local/bin/rocknix-gamescope-app', '--child']
-        assert argv[5:] == command
+        assert argv[:2] == ['/usr/local/bin/rocknix-gamescope', '--']
+        assert argv[2:] == command
         assert run.call_args.kwargs.get('shell', False) is False
         assert (root / 'rocknix-desktop/gamescope-app.log').exists()
     with patch.dict(os.environ, XDG_STATE_HOME=directory, DESKTOP_ENTRY_ID='example.desktop'), \
@@ -37,19 +37,6 @@ with tempfile.TemporaryDirectory() as directory:
         notices = []
         app['main'](['wine', 'game.exe'])
         assert len(notices) == 1 and 'failed' in notices[0]
-    def compositor_teardown(argv, **kwargs):
-        Path(argv[4]).write_text('0')
-        return SimpleNamespace(returncode=-6)
-    with patch.dict(os.environ, XDG_STATE_HOME=directory, DESKTOP_ENTRY_ID='example.desktop'), \
-            patch('subprocess.run', side_effect=compositor_teardown), \
-            patch.dict(app['main'].__globals__, message=lambda text: notices.append(text)):
-        notices = []
-        app['main'](['wine', 'game.exe'])
-        assert not notices, 'clean application exit misreported as launch failure'
-    status = root / 'child-status'
-    with patch('subprocess.run', return_value=SimpleNamespace(returncode=3)):
-        assert app['child'](status, ['false']) == 3
-        assert status.read_text() == '3'
     for entry, command in [('rocknix-games.desktop',['rocknix-games']),
                            ('custom.desktop',['rocknix-gamescope','--','wine']),
                            ('terminal.desktop',['foot','-e','command'])]:

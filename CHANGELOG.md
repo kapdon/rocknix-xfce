@@ -11,6 +11,11 @@ the change list.
 
 ## Highlights since v0.1.0
 
+- **Guest Gamescope cleanup:** Contain each launch in an unprivileged service,
+  clear detached Wine helpers on exit or compositor loss, and keep the shared
+  FEX server outside individual game lifetimes. RP6 preview checks passed;
+  the upstream compositor abort and final bundle acceptance remain separate.
+
 - **Gamescope app picker:** Keep “Launch with Gamescope” first in the initial
   Apps list, reuse installed app entries and display settings, and show a gamepad
   icon for both it and Steam games.

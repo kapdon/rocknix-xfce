@@ -140,10 +140,20 @@ all games, physical input or frame times. The later generic Apps picker was appl
 LXC. RP6 checks verified its pinned entry and icons, real Fuzzel selection into
 Gamescope, quoted arguments and working directory, and normal launches remaining
 on the outer display. Fullscreen game acceptance remains the user's PD2 test.
-Debian Gamescope was observed aborting during teardown after a clean probe exit;
-the app prefix records the child's exit status so that teardown does not falsely
-report a failed application launch. The compositor teardown issue itself is not
-fixed by this change.
+Guest launches now use a separate unprivileged systemd service for each
+`rocknix-gamescope` invocation. Closing the primary application or losing the
+compositor triggers bounded cleanup, including detached Wine children. A shared
+native FEX server runs in a separate guest service so closing one game cannot
+kill the translator server used by another application. User-manager persistence
+is enabled only inside Debian; stopping Desktop powers off the container.
+
+Outcomes are recorded under
+`~/.local/state/rocknix-desktop/gamescope-sessions/` (or `$XDG_STATE_HOME`).
+Application exit, compositor exit and confirmed service cleanup are distinct:
+a forced cleanup after a successful application exit does not produce a false
+application-failure popup. A missing manager or shared FEX service fails closed.
+Do not treat the absence of a popup as proof that Gamescope itself exited cleanly.
+See [teardown validation](gamescope-teardown.md) for RP6 evidence and limits.
 
 ## Accepted trust tradeoff
 

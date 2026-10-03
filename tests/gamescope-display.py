@@ -8,7 +8,7 @@ import runpy
 import tempfile
 import time
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 api = runpy.run_path('rootfs-overlay/usr/local/bin/rocknix-gamescope')
 args = api['display_args']
@@ -50,24 +50,25 @@ class Display(unittest.TestCase):
             bridge = Path(tmp)
             (bridge / 'games.json').write_text(json.dumps({'virtual_display': True}))
             (bridge / 'workarea.json').write_text(json.dumps(area()))
-            with patch.dict(api['configured_args'].__globals__, BRIDGE=bridge), patch('os.execve') as execute, \
+            with patch.dict(api['configured_args'].__globals__, BRIDGE=bridge), patch('runpy.run_path', return_value={'launch': Mock()}) as loader, \
                     patch.dict(os.environ, PATH='/usr/local/bin:/usr/bin'):
                 command = ['wine', '/games/a game.exe', '$(touch /tmp/unsafe)']
                 main(['--', *command])
-                binary, argv, env = execute.call_args.args
-                self.assertEqual(binary, '/usr/games/gamescope')
+                execute = loader.return_value['launch']
+                argv, forwarded, env = execute.call_args.args
+                self.assertEqual(argv[0], '/usr/games/gamescope')
                 self.assertEqual(argv[1:3], ['--backend', 'sdl'])
-                self.assertEqual(argv[-len(command):], command)
+                self.assertEqual(forwarded, command)
                 self.assertIn('953', argv)
                 self.assertEqual(env['SDL_VIDEODRIVER'], 'wayland')
                 self.assertEqual(env['PATH'], '/usr/local/bin:/usr/bin:/usr/games')
                 self.assertEqual(env['DISABLE_GAMESCOPE_WSI'], '1')
                 # Off uses the full monitor, independent of the current client size.
                 main(['--virtual-display', 'off', '--', *command])
-                self.assertIn('1080', execute.call_args.args[1])
+                self.assertIn('1080', execute.call_args.args[0])
                 (bridge / 'games.json').write_text('{}')
                 main(['--', *command])
-                self.assertIn('953', execute.call_args.args[1])
+                self.assertIn('953', execute.call_args.args[0])
 
     def test_toggle_menu_round_trip(self):
         for enabled in (True, False):
