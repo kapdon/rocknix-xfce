@@ -3,7 +3,9 @@
 import importlib.machinery
 import importlib.util
 import json
+import os
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -14,6 +16,36 @@ spec=importlib.util.spec_from_loader(loader.name,loader)
 g=importlib.util.module_from_spec(spec);loader.exec_module(g)
 
 class Games(unittest.TestCase):
+    def test_session_shared_wsi_policy_and_native_routing(self):
+        # Execute the real shell branches, replacing external launch commands.
+        # Inherit WSI=1 to exercise precedence over a pre-enabled layer.
+        with tempfile.TemporaryDirectory() as tmp:
+            script=Path(tmp)/'rocknix-games-session'
+            script.write_bytes(Path('payload/bin/rocknix-games-session').read_bytes())
+            helper=Path(tmp)/'rocknix-games'
+            helper.write_text('#!/bin/sh\nprintf "/native/Game.desktop\\n"\n')
+            helper.chmod(0o755)
+            harness='''
+source() { :; }
+exec() {
+  printf 'WSI=%s DISABLE=%s\\n' "${ENABLE_GAMESCOPE_WSI-unset}" "${DISABLE_GAMESCOPE_WSI-unset}"
+  printf '%s\\n' "$@"
+  exit
+}
+builtin source "$@"
+'''
+            env=dict(os.environ,ENABLE_GAMESCOPE_WSI='1')
+            env.pop('DISABLE_GAMESCOPE_WSI',None)
+            for app in ('526870','123','12345678901234567890'):
+                for mode in ('close','keep'):
+                    result=subprocess.run(['bash','-c',harness,str(script),str(script),app,mode],env=env,text=True,capture_output=True,check=True).stdout.splitlines()
+                    self.assertEqual(result[0],'WSI=0 DISABLE=1')
+                    if mode=='close':
+                        self.assertEqual(result[1:3],['/usr/bin/runemu.sh','/native/Game.desktop'])
+                    else:
+                        self.assertEqual(result[1],'/usr/bin/gamescope')
+                        self.assertIn('wayland',result)
+
     def test_catalog_tracks_native_shortcuts(self):
         with tempfile.TemporaryDirectory() as tmp,patch.object(g,'SHORTCUTS',Path(tmp)):
             p=Path(tmp)/'Satisfactory.desktop'

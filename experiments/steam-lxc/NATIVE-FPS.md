@@ -227,3 +227,117 @@ throughout focus changes, overrides and recovery. No virtual-controller recreati
 was observed. Eleven catalog/controller/lifecycle tests and full source checks passed.
 Physical stick/button gameplay and transitions while buttons are held are not yet
 accepted; these profile/device observations do not establish Steam overlay behavior.
+
+## Repeat acceptance: Close Desktop and Keep Desktop (2026-10-02)
+
+Tested deployed controller implementation from 3344a25 through the Desktop launch
+broker, with Satisfactory 526870. Both paths reached the animated main menu on
+their second attempt; neither is a clean launch-reliability pass:
+
+- Close Desktop: first attempt crashed with Unreal's VulkanViewport.cpp:795
+  swapchain image-count assertion. Normal Gamescope shutdown returned to Desktop
+  and restored its input profile. The retry reached the menu with Desktop/Sway
+  inactive and the native default.yaml profile selected. Normal shutdown again
+  restored Desktop/Sway, desktop.yaml and cleared the session lease.
+- Keep Desktop: first attempt exited with Gamescope xdg_backend protocol error 3
+  on xdg_surface@53; cleanup restored Desktop controls. The retry reached the menu
+  with Desktop/Sway active. Automatic focus selected desktop.yaml for Thunar and
+  default.yaml for Satisfactory. Pointer activation of the touchscreen Pad menu
+  successfully selected Desktop, Game, then Automatic. The virtual DualSense
+  remained the same input8/js1 device throughout. Stop restored desktop.yaml and
+  cleared the session lease and controller panel state, without Steam/Gamescope
+  processes remaining.
+
+Nested rendering occupied only the upper-left 1280x720 portion of the larger
+window in this run; sizing also needs follow-up. No fresh FPS measurement, physical
+controller acceptance, loaded-save gameplay, audio or Steam overlay acceptance was
+performed. These tests establish the profile/lifecycle behavior, not resolution of
+the intermittent graphics launch failures.
+
+## Shared presentation baseline and swapchain reliability
+
+The retained native launch log identifies the failure mechanism. For the same
+Satisfactory window (xid `0x1800091`), Gamescope WSI first created an XCB fallback
+swapchain with `flip: false`, requested minimum 3, actual **4 images**. On recreation
+it enabled bypass (`flip: true`) and returned **3 images**. CrashReportClient
+started immediately afterward; the associated game log asserted at
+VulkanViewport.cpp:795 that the image count must not change. The fresh unmodified
+comparison launch succeeded with bypass active throughout and 3 images on each
+recreation, consistent with an intermittent startup transition.
+
+The [upstream WSI implementation](https://github.com/ValveSoftware/gamescope/blob/master/layer/VkLayer_FROG_gamescope_wsi.cpp)
+selects an XCB fallback surface when bypass is unavailable, and can request a
+recreation when bypass eligibility changes. This source supports the trace-based
+diagnosis; it is not a qualification of a newer upstream build on RP6.
+
+The shared session wrapper sets `ENABLE_GAMESCOPE_WSI=0` and
+`DISABLE_GAMESCOPE_WSI=1` before either launch branch, for **all** Desktop-launched
+Steam games. There is no app-ID exception. The installed Vulkan layer manifest
+explicitly supports the disable flag, preventing activation even if a child
+launcher enables the optional layer again. Close Desktop still uses stock
+ROCKNIX DRM; Keep Desktop retains nested Wayland gamescope.
+
+Gamescope WSI is an optional XWayland bypass layer, distinct from Vulkan's normal
+window-system integration. The layer provides HDR format/metadata handling and
+Gamescope-specific timing/limiter integration in addition to bypass. The ordinary
+XWayland presentation path can still feed the Gamescope compositor and native DRM
+output. See [Gamescope's compositor overview](https://github.com/ValveSoftware/gamescope/blob/master/README.md)
+and the layer source above. Thus it is not required for this SDR baseline.
+Disabling it trades away those layer-specific features and may affect latency or
+performance; no fresh FPS comparison is claimed. HDR is not part of this baseline.
+
+This baseline removes the bypass/fallback transition implicated by the trace. It
+is not an Unreal or Gamescope binary repair, nor a fix for the separate nested
+xdg_surface protocol error or window sizing. Native launches outside our Desktop
+broker retain ROCKNIX's original policy. Steam Input and overlay are separate from
+this presentation layer; overlay operation remains unqualified.
+
+The initial experiment applied these flags only to Satisfactory. The user rejected
+per-game workarounds, so that conditional was removed before committing. The six
+runs below qualify the WSI-off path exercised by that experiment; final common
+policy validation is recorded separately.
+
+RP6 verification of wrapper SHA-256
+`913919061c7460235e1c7e2092c4cd6a5c0fa49a19b71360fbcedf728bf0a232`:
+
+| Mode | Consecutive menu launches | Menu detection after request | Recovery |
+| --- | --- | --- | --- |
+| Close Desktop / native DRM | 3/3 | 75–76 seconds | 3/3 |
+| Keep Desktop / nested Wayland | 3/3 | 61–76 seconds | 3/3 |
+
+Menu detection polled the fresh game log every 15 seconds, then held the session
+for 20 seconds; these times are coarse readiness observations, not benchmarks.
+Every run verified Desktop/Sway state for its mode, both WSI environment flags in
+the actual FactoryGame process, no mapped `libVkLayer_FROG` library, no image-count
+assertion, restored Desktop controls and lease cleanup. Screenshots confirmed
+native and nested menus. No retry was needed after deploying the workaround.
+The first capture raced shutdown, so that first run's menu acceptance uses its
+fresh world-start log and surviving game process; later captures completed before
+cleanup. An additional focus probe after the final run raced cleanup and was not
+counted as a control acceptance test.
+
+Final state: Desktop/Sway active, game service inactive, no Steam/Gamescope
+processes, binfmt entries restored. Twelve game tests and the full project checks
+passed. Six short launches support the WSI-off path but do not qualify
+long-session gameplay or guarantee absence of all launch failures.
+
+The final common-policy wrapper has SHA-256
+`26c1989e8e230aa3ed36a4bd12e77ffeddf501b7ff6f8105add19f38fbec0f98`.
+Shell branch tests exercise multiple ordinary and long shortcut IDs in both modes,
+including an inherited WSI-enable flag, and require the same disabled-layer policy
+while retaining native versus nested routing. The full project checks passed.
+An independent host Vulkan `vkcube --wsi xcb --c 600` run inside nested Gamescope
+rendered successfully, had no WSI layer mapped, and exited with status 0. This
+establishes that the presentation path works independently of Satisfactory; only
+Satisfactory is installed as a Steam game on this device, so other-title behavior
+is not claimed.
+
+Final deployed common-policy smoke checks: Satisfactory reached its menu in Close
+Desktop (~61 seconds) and Keep Desktop (~76 seconds), each held for 20 seconds
+without the assertion. Both game processes had the disable flag and no mapped WSI
+library. The native recovery initially reported its restored native input profile
+while Desktop initialized; a subsequent check confirmed desktop.yaml and the
+correct saved native profile. Both runs ended with Desktop/Sway active and the
+game lease cleared. Across the initial six and these final two runs, the WSI-off
+path had eight successful menu launches with no swapchain assertion. This does
+not expand the hardware/gameplay qualification beyond the scenarios above.

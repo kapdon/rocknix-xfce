@@ -6,6 +6,11 @@ source /etc/profile
 export HOME=/storage USER=root LOGNAME=root
 export XDG_RUNTIME_DIR=/run/0-runtime-dir WAYLAND_DISPLAY=wayland-1
 export PULSE_SERVER=unix:/run/0-runtime-dir/pulse/native
+# Shared SDR baseline: use ordinary XWayland presentation in both modes.
+# The optional Gamescope WSI bypass can change swapchain image counts while
+# switching paths. Its HDR/timing features are outside this baseline.
+# The disable flag wins even if a child launcher enables the implicit layer.
+export ENABLE_GAMESCOPE_WSI=0 DISABLE_GAMESCOPE_WSI=1
 if [[ $2 == close ]]; then
   export SWAYSOCK=/run/0-runtime-dir/sway-ipc.0.sock
   # Keep the stock launcher inside our cgroup so exit/recovery owns all children.
@@ -17,8 +22,6 @@ if [[ $2 == close ]]; then
 fi
 export STEAM_COMPAT_GRAPHICS_PROVIDER=/storage/.local/share/fex-emu/RootFS/ArchLinux/graphics_provider.json
 export DISABLE_LSFGVK=1
-# Avoid Unreal swapchain recreation assertion observed in Satisfactory.
-export ENABLE_GAMESCOPE_WSI=0
 unset DISPLAY MESA_LOADER_DRIVER_OVERRIDE VK_DRIVER_FILES VK_ICD_FILENAMES
 export LD_LIBRARY_PATH=/storage/.local/share/Steam/lib/aarch64-linux-gnu
 exec /usr/bin/gamescope --backend wayland -W 1280 -H 720 -w 1280 -h 720 -r 60 \

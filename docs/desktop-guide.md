@@ -112,8 +112,13 @@ This requires the existing native Steam runtime and installed game libraries;
 it does not install Steam or provide native Steam's broken Browse dialog.
 Close another Steam session before launching here. The launcher owns one game
 session, restores native binfmt state after it ends, and stops it if host available
-RAM drops below 1.5 GiB. Nested mode disables frame generation and gamescope WSI for compatibility.
-Close mode follows native ROCKNIX settings, including its frame-generation choice.
+RAM drops below 1.5 GiB. Both modes use the same SDR baseline: the optional
+Gamescope WSI bypass layer is disabled for every game. Ordinary XWayland
+presentation remains available; Close mode still uses native DRM gamescope.
+WSI-specific HDR and presentation-timing features are outside this baseline;
+performance may differ from native WSI-enabled sessions. Nested mode also disables
+frame generation. Close mode retains ROCKNIX's other per-game settings, including
+its frame-generation choice.
 
 While a **Keep Desktop** Steam session runs, the panel shows **Pad: Game** or
 **Pad: Desktop**. Tap it to choose:
