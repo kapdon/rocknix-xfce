@@ -39,6 +39,7 @@ fakeroot -- python3 tests/install-replace.py
 fakeroot -- python3 tests/updater-helper-path.py
 python3 tests/desktop-paths.py
 bash tests/installer-layout.sh
+bash tests/installer-games-idle.sh
 
 while IFS= read -r file; do
   [ -f "$file" ] || continue

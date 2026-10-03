@@ -146,7 +146,7 @@ def retained_marker(host):
 
 
 def idle():
-    maintenance = runpy.run_path(str(Path(__file__).with_name('rocknix-desktop-maintenance')))
+    maintenance = runpy.run_path(str(helper_path('rocknix-desktop-maintenance')))
     maintenance['require_games_idle']()
     desktop = subprocess.run(
         ['systemctl', 'show', '--property=ActiveState', '--value', 'rocknix-desktop.service'],

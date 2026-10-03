@@ -50,7 +50,10 @@ library or changes to the installed ROCKNIX scripts are required.
   our nested-session entry point in the same native scope. The full native
   launcher currently selects DRM and stops Sway, so the nested Gamescope command
   remains Desktop-specific. A missing helper fails explicitly; there is no
-  silent alternate launcher.
+  silent alternate launcher. Keep mode captures Steam's own exit status and
+  restarts the nested session on its update/restart code 42 within the same scope.
+  Normal exits, compositor failures without a client restart request, and stop
+  signals end the session.
 - `rocknix-desktop-games.service` supervises Desktop transitions, the available
   memory guard and controller focus. Steam and its children live in the native
   scope, not the supervisor service. Focus detection follows scope membership.
@@ -59,12 +62,14 @@ library or changes to the installed ROCKNIX scripts are required.
   native scope receives the session task limit after it appears.
 - Maintenance checks refuse a live Steam scope, an active/transitional supervisor
   or an unfinished session journal. This covers the interval after the
-  supervisor releases its lock and before recovery completes.
+  supervisor releases its lock and before recovery completes. The standalone
+  installer checks before and after acquiring its lock, before downloading;
+  copied updaters resolve this guard from their trusted helper directory.
 
 Both modes retain the previously validated common SDR policy that disables the
 optional Gamescope WSI bypass. This is a Desktop launch policy, not a firmware
 modification. Scope reuse does not imply that Keep mode inherits every native
-game setting or Steam-update restart behavior.
+game setting.
 
 ## Accepted trust tradeoff
 
@@ -109,8 +114,10 @@ guest-to-host isolation simultaneously is not a supported security claim.
 
 Source tests cover native-helper routing, inherited identity variables, shared
 WSI policy, controller scope membership, cleanup ordering, failed cleanup journal
-retention, idempotent stop and maintenance exclusion. Device results are recorded
-in [the Steam experiment log](../experiments/steam-lxc/NATIVE-FPS.md).
+retention, idempotent stop, Steam restart/stop behavior and maintenance exclusion
+through recovery and copied updater entry points. The restart and maintenance
+regressions use local fixtures; no new device qualification is claimed. Device
+results are recorded in [the Steam experiment log](../experiments/steam-lxc/NATIVE-FPS.md).
 
 An early native-scope attempt hit a full `/dev/shm` and Steam's SIGBUS. Inspection
 found 1,012 unreferenced root Steam `u0-Shm_*` files occupying 6,005,923,840 bytes.

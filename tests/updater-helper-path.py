@@ -3,9 +3,11 @@
 from pathlib import Path
 import runpy
 import tempfile
+from types import SimpleNamespace
 from unittest.mock import patch
 
 source = Path('payload/bin/rocknix-lxc-upgrade').read_bytes()
+maintenance = Path('payload/bin/rocknix-desktop-maintenance').read_bytes()
 for layout in ('bundle', 'installed', 'payload'):
     with tempfile.TemporaryDirectory() as temporary:
         root = Path(temporary)
@@ -34,4 +36,22 @@ for layout in ('bundle', 'installed', 'payload'):
                 raise AssertionError('linked helper accepted')
             except RuntimeError:
                 pass
+        # Invoke the real idle entry point from every copied-updater location.
+        # Its maintenance helper is alongside the other trusted helpers, not
+        # alongside the top-level upgrade-lxc.py in bundles/installations.
+        guard = directory / 'rocknix-desktop-maintenance'
+        guard.write_bytes(maintenance)
+        with patch.dict(locate.__globals__, safe_directory=lambda p: None, no_mounts=lambda p: None), \
+                patch('subprocess.run', return_value=SimpleNamespace(stdout='inactive\n', returncode=0)), \
+                patch('os.path.lexists', return_value=False):
+            api['idle']()
+        with patch.dict(locate.__globals__, safe_directory=lambda p: None), \
+                patch('os.path.lexists', side_effect=lambda p: str(p) == '/run/rocknix-desktop-games/session.json'), \
+                patch('subprocess.run') as run:
+            try:
+                api['idle']()
+                raise AssertionError('copied updater ignored unfinished game recovery')
+            except RuntimeError as error:
+                assert 'Steam session recovery' in str(error)
+            run.assert_not_called()
 print('PASS: bundled, installed and payload updater helper paths; unsafe helper refusal')

@@ -35,7 +35,32 @@ export STEAM_COMPAT_GRAPHICS_PROVIDER=/storage/.local/share/fex-emu/RootFS/ArchL
 export DISABLE_LSFGVK=1
 unset DISPLAY MESA_LOADER_DRIVER_OVERRIDE VK_DRIVER_FILES VK_ICD_FILENAMES
 export LD_LIBRARY_PATH=/storage/.local/share/Steam/lib/aarch64-linux-gnu
-exec /usr/bin/gamescope --backend wayland -W 1280 -H 720 -w 1280 -h 720 -r 60 \
-  --xwayland-count 2 --force-windows-fullscreen -- \
-  /storage/.local/share/Steam/steamrtarm64/steam \
-  -deckard -steamos3 -nobigpicture -noshaders -silent "steam://rungameid/$1"
+# Like the native launcher, keep the scope alive across Steam's update restart.
+# Gamescope can mask its child's status, so record Steam's exit separately.
+steam_status_dir=$(mktemp -d /tmp/rocknix-steam-session.XXXXXX)
+trap 'rm -rf -- "$steam_status_dir"' EXIT
+trap 'exit 143' TERM
+trap 'exit 130' INT
+while :; do
+  rm -f -- "$steam_status_dir/status"
+  gamescope_status=0
+  /usr/bin/gamescope --backend wayland -W 1280 -H 720 -w 1280 -h 720 -r 60 \
+    --xwayland-count 2 --force-windows-fullscreen -- \
+    /bin/bash -c '
+      status_file=$1
+      shift
+      status=0
+      "$@" || status=$?
+      printf "%s\n" "$status" > "$status_file"
+      exit "$status"
+    ' _ "$steam_status_dir/status" \
+    /storage/.local/share/Steam/steamrtarm64/steam \
+    -deckard -steamos3 -nobigpicture -noshaders -silent "steam://rungameid/$1" || gamescope_status=$?
+  if [[ -f "$steam_status_dir/status" ]]; then
+    read -r steam_status < "$steam_status_dir/status"
+    [[ $steam_status != 42 ]] || continue
+    [[ $steam_status == 0 ]] || exit "$steam_status"
+  fi
+  # A compositor failure before Steam starts is not a client restart request.
+  exit "$gamescope_status"
+done

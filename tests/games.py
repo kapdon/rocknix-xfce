@@ -5,6 +5,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import runpy
 import subprocess
 import tempfile
 import unittest
@@ -43,6 +44,7 @@ exec() {
   printf '%s\\n' "$@"
   exit
 }
+/usr/bin/gamescope() { exec /usr/bin/gamescope "$@"; }
 builtin source "$@"
 '''
             env=dict(os.environ,ENABLE_GAMESCOPE_WSI='1',USER='fixture-user',LOGNAME='fixture-login',_STEAM_SCOPE='1')
@@ -58,6 +60,74 @@ builtin source "$@"
                     else:
                         self.assertEqual(result[1],'/usr/bin/gamescope')
                         self.assertIn('wayland',result)
+
+    def test_keep_restarts_only_for_steam_exit_42(self):
+        script=str(Path('payload/bin/rocknix-games-session').resolve())
+        harness=r'''
+source() {
+  if [[ $1 == /usr/bin/start_steam.sh ]]; then
+    steam_scope_reexec_if_needed() { printf 'scope\n' >> "$FIXTURE_DIR/scopes"; }
+  fi
+}
+mktemp() { command mktemp -d "$FIXTURE_DIR/scratch.XXXXXX"; }
+/usr/bin/gamescope() {
+  printf 'gamescope\n' >> "$FIXTURE_DIR/compositors"
+  if [[ $FIXTURE_MODE != no-client ]]; then
+    while [[ $1 != -- ]]; do shift; done
+    shift
+    local -a command=()
+    local argument
+    for argument; do
+      [[ $argument != /storage/.local/share/Steam/steamrtarm64/steam ]] || argument=$FIXTURE_DIR/steam
+      command+=("$argument")
+    done
+    "${command[@]}" || :
+    [[ $FIXTURE_MODE != stop ]] || kill -TERM "$$"
+  fi
+  return "$FIXTURE_COMPOSITOR_STATUS"
+}
+exec() { "$@"; exit $?; }
+builtin source "$1" 526870 keep
+'''
+        cases = (
+            ([0], 0, 'normal', 1, 0),
+            ([42, 0], 0, 'normal', 2, 0),
+            ([42, 42, 0], 1, 'normal', 3, 1),
+            ([42, 7], 0, 'normal', 2, 7),
+            ([0], 42, 'normal', 1, 42),
+            ([], 42, 'no-client', 1, 42),
+            ([42], 0, 'stop', 1, 143),
+        )
+        for statuses, compositor_status, mode, launches, expected in cases:
+            with self.subTest(statuses=statuses, compositor=compositor_status, mode=mode), tempfile.TemporaryDirectory() as tmp:
+                root=Path(tmp)
+                (root/'statuses').write_text(json.dumps(statuses))
+                steam=root/'steam'
+                steam.write_text('''#!/usr/bin/python3
+import json, os, sys
+from pathlib import Path
+root=Path(os.environ['FIXTURE_DIR'])
+log=root/'clients'
+calls=json.loads(log.read_text()) if log.exists() else []
+statuses=json.loads((root/'statuses').read_text())
+status=statuses[len(calls)]
+calls.append(sys.argv[1:])
+log.write_text(json.dumps(calls))
+raise SystemExit(status)
+''')
+                steam.chmod(0o755)
+                env=dict(os.environ,FIXTURE_DIR=tmp,FIXTURE_MODE=mode,
+                         FIXTURE_COMPOSITOR_STATUS=str(compositor_status))
+                result=subprocess.run(['bash','-c',harness,'fixture',script],env=env,
+                                      text=True,capture_output=True,timeout=10)
+                self.assertEqual(result.returncode,expected,result.stderr)
+                self.assertEqual((root/'compositors').read_text().splitlines(),['gamescope']*launches)
+                self.assertEqual((root/'scopes').read_text().splitlines(),['scope'])
+                clients=json.loads((root/'clients').read_text()) if (root/'clients').exists() else []
+                self.assertEqual(len(clients),len(statuses))
+                for args in clients:
+                    self.assertEqual(args,['-deckard','-steamos3','-nobigpicture','-noshaders','-silent','steam://rungameid/526870'])
+                self.assertEqual(list(root.glob('scratch.*')),[])
 
     def test_missing_native_scope_helper_fails_closed(self):
         script=str(Path('payload/bin/rocknix-games-session').resolve())
@@ -130,6 +200,41 @@ builtin source "$@"
             with self.assertRaisesRegex(ValueError,'recovery failed'):
                 g.recover()
             self.assertTrue(p.exists())
+
+    def test_maintenance_excluded_through_recovery(self):
+        idle=runpy.run_path('payload/bin/rocknix-desktop-maintenance')['require_games_idle']
+        for recovered in (True,False):
+            with self.subTest(recovered=recovered), tempfile.TemporaryDirectory() as tmp:
+                root=Path(tmp)
+                journal=root/'session.json'
+                journal.write_text(json.dumps({'mode':'close','desktop_stopped':True,'binfmt':{},'scope':g.SCOPE}))
+                states={g.UNIT:'deactivating',g.SCOPE:'active'}
+                def systemctl(args,**kwargs):
+                    return SimpleNamespace(stdout=states[args[-1]],returncode=0)
+                def blocked():
+                    with self.assertRaises(RuntimeError):idle()
+                def recover_command(*args,**kwargs):
+                    blocked()
+                    if args[1:]==('stop',g.SCOPE):states[g.SCOPE]='inactive'
+                    return SimpleNamespace(stdout=states[g.SCOPE] if args[1]=='show' else 'running')
+                with patch('os.path.lexists',side_effect=lambda p: str(p)=='/run/rocknix-desktop-games/session.json' and journal.exists()), \
+                        patch('subprocess.run',side_effect=systemctl), \
+                        patch.object(g,'LEASE',root),patch.object(g,'CONTROL',root/'controls.json'), \
+                        patch.object(g,'CONTROL_PUBLIC',root/'controller.json'), \
+                        patch.object(g,'run',side_effect=recover_command), \
+                        patch.object(g.time,'sleep',side_effect=lambda _:blocked()), \
+                        patch.object(g,'active',return_value=recovered):
+                    if recovered:g.recover()
+                    else:
+                        with self.assertRaisesRegex(ValueError,'Desktop recovery failed'):g.recover()
+                    blocked()  # ExecStopPost has not yet left the deactivating unit.
+                    states[g.UNIT]='inactive' if recovered else 'failed'
+                    if recovered:
+                        self.assertFalse(journal.exists())
+                        idle()
+                    else:
+                        self.assertTrue(journal.exists())
+                        blocked()
 
     def test_focus_requires_owned_process(self):
         with tempfile.TemporaryDirectory() as tmp,patch.object(g,'PROC',Path(tmp)):

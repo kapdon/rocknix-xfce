@@ -10,6 +10,9 @@ for script, function in (
         ('rocknix-lxc-upgrade', 'idle'),
         ('rocknix-desktop-maintenance', 'require_idle')):
     idle = runpy.run_path('payload/bin/' + script)[function]
+    # Helper ownership/layout is exercised separately under fakeroot.
+    if script == 'rocknix-lxc-upgrade':
+        idle.__globals__['helper_path'] = lambda name: Path('payload/bin') / name
     for state in ('inactive', 'active', 'activating', 'deactivating',
                   'reloading', 'failed', '', 'unknown'):
         def run(args, **kwargs):

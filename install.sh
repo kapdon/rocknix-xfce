@@ -80,6 +80,20 @@ check_install_target() {
   fi
 }
 
+check_games_idle() {
+  # This standalone downloader cannot use a bundled helper yet. Check before
+  # and immediately after locking, rather than holding recovery off for a download.
+  local journal=${1:-/run/rocknix-desktop-games/session.json} state unit
+  [ ! -e "$journal" ] && [ ! -L "$journal" ] || fail 'finish Steam session recovery before maintenance'
+  for unit in rocknix-desktop-games.service steam-bigpicture.scope; do
+    state=$(systemctl show --property=ActiveState --value "$unit") || fail 'cannot inspect Steam state'
+    case "$state" in
+      inactive|failed) ;;
+      *) fail 'Steam must be fully inactive before maintenance' ;;
+    esac
+  done
+}
+
 check_device() {
   [ "$(id -u)" = 0 ] || fail 'run as root on the ROCKNIX device'
   [ -r /etc/os-release ] || fail 'missing OS identification'
@@ -102,6 +116,7 @@ check_device() {
   local state
   state=$(systemctl show --property=ActiveState --value rocknix-desktop.service) || fail 'cannot inspect Desktop state'
   [ "$state" = inactive ] || fail 'exit Desktop Mode before running the installer'
+  check_games_idle
   if [ "${OPERATION:-auto}" != uninstall ]; then
     [ "$(df -Pk /storage | awk 'END {print $4}')" -ge 4194304 ] ||
       fail 'at least 4 GiB free on /storage is required'
