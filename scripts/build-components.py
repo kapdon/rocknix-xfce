@@ -92,7 +92,7 @@ def input_keys(root=None):
         'firefox-media': ['build-support/ffmpeg/build.sh'],
         'mpv-media': ['build-support/mpv-ffmpeg'],
         'keyboard': ['build-support/wvkbd'],
-        'xwayland': [],
+        'xwayland': ['build-support/xwayland'],
         'fuzzel': ['build-support/fuzzel'],
         'trash-packages': ['build-support/trash', 'scripts/package-trash.py', 'payload/guest/update-trash-packages.py'],
         'guest-integration': ['rootfs-overlay'],

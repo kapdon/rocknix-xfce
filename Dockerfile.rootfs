@@ -74,12 +74,14 @@ ARG TARGETARCH
 RUN test "${TARGETARCH}" = "arm64" && dpkg --add-architecture arm64 \
     && apt-get update && apt-get install -y --no-install-recommends \
        cargo rustc libstd-rust-dev:arm64 gcc-aarch64-linux-gnu libc6-dev-arm64-cross \
-       pkg-config ca-certificates libclang-dev libxcb1-dev:arm64 \
+       pkg-config ca-certificates patch libclang-dev libxcb1-dev:arm64 \
        libxcb-cursor-dev:arm64 libxkbcommon-dev:arm64 libwayland-dev:arm64
 ADD --checksum=sha256:8b32873d7d740143ce9efa3cfb43c17d0176b89d2e8ffaa497db709f154fc478 \
     https://github.com/Supreeeme/xwayland-satellite/archive/refs/tags/v0.8.3.tar.gz /tmp/satellite.tar.gz
 RUN mkdir /tmp/satellite && tar -xzf /tmp/satellite.tar.gz --strip-components=1 -C /tmp/satellite
 WORKDIR /tmp/satellite
+COPY build-support/xwayland/compositor-size.patch /tmp/compositor-size.patch
+RUN patch -p1 < /tmp/compositor-size.patch
 ENV CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
     PKG_CONFIG_ALLOW_CROSS=1 \
     PKG_CONFIG_LIBDIR=/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/share/pkgconfig
@@ -87,6 +89,8 @@ RUN cargo build --locked --release --target aarch64-unknown-linux-gnu \
     && aarch64-linux-gnu-strip target/aarch64-unknown-linux-gnu/release/xwayland-satellite \
     && cargo vendor --locked /tmp/vendor >/tmp/vendor-config.toml \
     && tar -czf /tmp/vendor.tar.gz -C /tmp vendor vendor-config.toml
+# Distribute the exact patched source used for the installed binary.
+RUN tar -czf /tmp/satellite.tar.gz --exclude=target --exclude=.git -C /tmp satellite
 
 FROM debian@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a AS desktop-dependencies
 

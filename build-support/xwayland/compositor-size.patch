@@ -1,0 +1,133 @@
+--- a/src/server/mod.rs
++++ b/src/server/mod.rs
+@@ -240,6 +240,7 @@
+     toplevel: XdgToplevel,
+     xdg: XdgSurfaceData,
+     fullscreen: bool,
++    constrained: bool,
+     decoration: decoration::DecorationsData,
+ }
+ 
+@@ -1079,6 +1080,16 @@
+         !win.mapped || win.attrs.role.is_popup()
+     }
+ 
++    /// Tiled/maximized/fullscreen clients must keep the compositor's allocation.
++    pub fn constrained_window_dims(&self, window: x::Window) -> Option<WindowDims> {
++        let entity = *self.windows.get(&window)?;
++        let data = self.world.entity(entity).ok()?;
++        let role = data.get::<&SurfaceRole>()?;
++        let SurfaceRole::Toplevel(Some(toplevel)) = &*role else { return None; };
++        if !toplevel.constrained { return None; }
++        Some(data.get::<&WindowData>()?.attrs.dims)
++    }
++
+     pub fn reconfigure_window(&mut self, event: x::ConfigureNotifyEvent) {
+         let Some((mut win, data)) = self
+             .windows
+@@ -1589,6 +1600,7 @@
+             },
+             toplevel,
+             fullscreen: false,
++            constrained: false,
+             decoration: DecorationsData {
+                 wl: wl_decoration,
+                 satellite: sat_decoration,
+--- a/src/server/event.rs
++++ b/src/server/event.rs
+@@ -387,6 +387,13 @@
+ 
+                 let mut role = data.get::<&mut SurfaceRole>().unwrap();
+                 if let SurfaceRole::Toplevel(Some(toplevel)) = &mut *role {
++                    toplevel.constrained = states.chunks_exact(4).any(|bytes| {
++                        let value = u32::from_ne_bytes(bytes.try_into().unwrap());
++                        matches!(xdg_toplevel::State::try_from(value),
++                            Ok(xdg_toplevel::State::Maximized | xdg_toplevel::State::Fullscreen
++                                | xdg_toplevel::State::TiledLeft | xdg_toplevel::State::TiledRight
++                                | xdg_toplevel::State::TiledTop | xdg_toplevel::State::TiledBottom))
++                    });
+                     let prev_fs = toplevel.fullscreen;
+                     toplevel.fullscreen =
+                         states.contains(&(u32::from(xdg_toplevel::State::Fullscreen) as u8));
+--- a/src/server/tests.rs
++++ b/src/server/tests.rs
+@@ -3343,3 +3343,22 @@
+ /// See Pointer::handle_event for an explanation.
+ #[test]
+ fn popup_pointer_motion_workaround() {}
++
++#[test]
++fn compositor_constrained_resize_state() {
++    let (mut f, comp) = TestFixture::new_with_compositor();
++    let window = Window::new(1);
++    let (_, surface) = f.create_toplevel(&comp, window);
++    assert!(f.satellite.constrained_window_dims(window).is_none());
++    for state in [xdg_toplevel::State::TiledLeft, xdg_toplevel::State::TiledRight,
++                  xdg_toplevel::State::TiledTop, xdg_toplevel::State::TiledBottom,
++                  xdg_toplevel::State::Maximized, xdg_toplevel::State::Fullscreen] {
++        f.testwl.configure_toplevel(surface, 1920, 953, vec![state]);
++        f.run();
++        let dims = f.satellite.constrained_window_dims(window).unwrap();
++        assert_eq!((dims.width, dims.height), (1920, 953));
++    }
++    f.testwl.configure_toplevel(surface, 800, 600, vec![xdg_toplevel::State::Activated]);
++    f.run();
++    assert!(f.satellite.constrained_window_dims(window).is_none());
++}
+--- a/src/xstate/mod.rs
++++ b/src/xstate/mod.rs
+@@ -477,6 +477,7 @@
+                 xcb::Event::X(x::Event::ConfigureRequest(e)) => {
+                     debug!("{:?} request: {:?}", e.window(), e.value_mask());
+ 
++                    let constrained = server_state.constrained_window_dims(e.window());
+                     let mut list = Vec::new();
+                     let mask = e.value_mask();
+ 
+@@ -489,10 +490,10 @@
+                         }
+                     }
+                     if mask.contains(x::ConfigWindowMask::WIDTH) {
+-                        list.push(x::ConfigWindow::Width(e.width().into()));
++                        list.push(x::ConfigWindow::Width(constrained.map_or(e.width(), |d| d.width).into()));
+                     }
+                     if mask.contains(x::ConfigWindowMask::HEIGHT) {
+-                        list.push(x::ConfigWindow::Height(e.height().into()));
++                        list.push(x::ConfigWindow::Height(constrained.map_or(e.height(), |d| d.height).into()));
+                     }
+ 
+                     unwrap_or_skip_bad_window_cont!(self.connection.send_and_check_request(
+@@ -501,6 +502,22 @@
+                             value_list: &list,
+                         }
+                     ));
++                    if let Some(dims) = constrained {
++                        // A refused resize may not generate a real ConfigureNotify.
++                        // Tell clients (including Wine) the actual accepted geometry.
++                        let notify = x::ConfigureNotifyEvent::new(
++                            e.window(), e.window(), x::WINDOW_NONE,
++                            dims.x, dims.y, dims.width, dims.height, 0, false,
++                        );
++                        unwrap_or_skip_bad_window_cont!(self.connection.send_and_check_request(
++                            &x::SendEvent {
++                                propagate: false,
++                                destination: x::SendEventDest::Window(e.window()),
++                                event_mask: x::EventMask::STRUCTURE_NOTIFY,
++                                event: &notify,
++                            }
++                        ));
++                    }
+                 }
+                 xcb::Event::X(x::Event::ClientMessage(e)) => {
+                     self.handle_client_message(e, server_state);
+--- a/testwl/src/lib.rs
++++ b/testwl/src/lib.rs
+@@ -336,7 +336,7 @@
+         toplevel.states = states.clone();
+         let states: Vec<u8> = states
+             .into_iter()
+-            .map(|state| u32::from(state) as u8)
++            .flat_map(|state| u32::from(state).to_ne_bytes())
+             .collect();
+         toplevel.toplevel.configure(width, height, states);
+         toplevel.xdg.configure(last_serial);
