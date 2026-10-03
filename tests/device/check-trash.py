@@ -15,7 +15,14 @@ import tempfile
 import time
 import uuid
 
-SHARES = ('Desktop', 'Steam', 'backup', 'games-external', 'games-internal')
+# The runtime binds only shares that exist on the host. Do not invent host
+# directories just to test Trash; exercise every approved share actually bound.
+MOUNT_PATHS = {line.split()[4] for line in
+               Path('/proc/self/mountinfo').read_text().splitlines()}
+SHARES = tuple(name for name in
+               ('Desktop', 'Steam', 'backup', 'games-external', 'games-internal')
+               if '/storage/' + name in MOUNT_PATHS)
+assert SHARES, 'No shared mounts available for the Trash test'
 
 
 def test_environment(runtime):
