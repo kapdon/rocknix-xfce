@@ -67,7 +67,7 @@ def main(argv=None):
     env = dict(os.environ, SDL_VIDEODRIVER='wayland', ENABLE_GAMESCOPE_WSI='0', DISABLE_GAMESCOPE_WSI='1')
     # Guest SDL/Wayland works without exposing a DRM primary node to the LXC.
     # Children use Gamescope's X11 display, not the outer desktop's Wayland socket.
-    os.execve('/usr/bin/gamescope', ['gamescope', '--backend', 'sdl', *dimensions,
+    os.execve('/usr/games/gamescope', ['gamescope', '--backend', 'sdl', *dimensions,
               '--force-windows-fullscreen', '--', '/usr/bin/env', '-u', 'WAYLAND_DISPLAY',
               '-u', 'WAYLAND_SOCKET', 'SDL_VIDEODRIVER=x11', 'GDK_BACKEND=x11',
               'QT_QPA_PLATFORM=xcb', *command], env)

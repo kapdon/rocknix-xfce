@@ -54,7 +54,7 @@ class Display(unittest.TestCase):
                 command = ['wine', '/games/a game.exe', '$(touch /tmp/unsafe)']
                 main(['--', *command])
                 binary, argv, env = execute.call_args.args
-                self.assertEqual(binary, '/usr/bin/gamescope')
+                self.assertEqual(binary, '/usr/games/gamescope')
                 self.assertEqual(argv[1:3], ['--backend', 'sdl'])
                 self.assertEqual(argv[-len(command):], command)
                 self.assertIn('953', argv)

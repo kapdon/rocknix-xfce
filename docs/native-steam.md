@@ -112,7 +112,7 @@ Commands and arguments are passed directly, without shell evaluation. This
 launcher targets X11/Wine games, uses the guest SDL/Wayland backend, and retains
 the shared WSI-disable baseline. Its children select X11 so they cannot bypass
 the virtual display by connecting to the outer Wayland compositor. Direct calls
-to `/usr/bin/gamescope` and applications with their own compositor launch logic
+to the upstream `gamescope` binary and applications with their own compositor launch logic
 are not intercepted. The guest base includes Debian's Gamescope backport; no
 host library tree or additional DRM primary device is exposed for it.
 

@@ -172,10 +172,11 @@ RUN printf '#!/bin/sh\nexit 101\n' >/usr/sbin/policy-rc.d \
     && rm -rf /var/lib/apt/lists/*
 
 # Nested guest Gamescope needs the SDL backend available in trixie-backports.
-# Reuse the base source URI so component builds retain their snapshot lock.
-RUN sed -i 's/^Suites: trixie trixie-updates$/Suites: trixie trixie-updates trixie-backports/' /etc/apt/sources.list.d/debian.sources \
+# Debian ships Gamescope in contrib. Retain the signed snapshot source URI.
+RUN sed -i 's/^Suites: trixie trixie-updates$/Suites: trixie trixie-updates trixie-backports/; s/^Components: main$/Components: main contrib/' /etc/apt/sources.list.d/debian.sources \
     && apt-get update \
     && apt-get install -y --no-install-recommends -t trixie-backports gamescope \
+    && test -x /usr/games/gamescope \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # X11 dependencies are part of every fresh guest base, including upgrades.
