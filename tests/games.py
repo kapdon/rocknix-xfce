@@ -16,14 +16,58 @@ loader=importlib.machinery.SourceFileLoader('games','payload/bin/rocknix-games')
 spec=importlib.util.spec_from_loader(loader.name,loader)
 g=importlib.util.module_from_spec(spec);loader.exec_module(g)
 
+def stage_session(root):
+    script = root / 'bin/rocknix-games-session'
+    script.parent.mkdir()
+    script.write_bytes(Path('payload/bin/rocknix-games-session').read_bytes())
+    helper = root / 'guest/rocknix-gamescope'
+    helper.parent.mkdir()
+    helper.write_text('#!/bin/sh\nprintf "%s\\n" -W 1920 -H 953 -w 1920 -h 953\n')
+    helper.chmod(0o755)
+    return script
+
+
 class Games(unittest.TestCase):
+    def test_display_setting_survives_mode_changes_and_old_state(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(g, 'STATE', Path(tmp) / 'settings'), patch.object(g, 'publish'):
+            self.assertEqual(g.settings(), {'mode': 'close', 'virtual_display': True})
+            g.atomic(g.STATE, {'mode': 'keep'})
+            g.request(['virtual-display', 'on'])
+            self.assertEqual(g.settings(), {'mode': 'keep', 'virtual_display': True})
+            g.request(['mode', 'close'])
+            self.assertEqual(g.settings(), {'mode': 'close', 'virtual_display': True})
+            g.request(['virtual-display', 'off'])
+            self.assertFalse(g.settings()['virtual_display'])
+            before = g.STATE.read_bytes()
+            with self.assertRaises(ValueError):
+                g.request(['virtual-display', 'on; touch /tmp/unsafe'])
+            self.assertEqual(g.STATE.read_bytes(), before)
+            for invalid in ('null', '[]', '{bad', '{"mode":"bad","virtual_display":"true"}'):
+                g.STATE.write_text(invalid)
+                self.assertEqual(g.settings(), {'mode': 'close', 'virtual_display': True})
+
+    def test_virtual_display_failure_precedes_session_creation(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(g, 'STATE', Path(tmp)/'settings'), \
+                patch.object(g, 'LEASE', Path(tmp)/'lease'), patch.object(g, 'publish'), \
+                patch.object(g, 'catalog', return_value=[{'id': '526870'}]), \
+                patch.object(g, 'steam_running', return_value=False), \
+                patch.object(g, 'active', side_effect=lambda unit: unit == 'rocknix-desktop.service'), \
+                patch.object(g, 'run', return_value=SimpleNamespace(returncode=1)) as invoke:
+            g.atomic(g.STATE, {'mode': 'keep', 'virtual_display': True})
+            with self.assertRaisesRegex(ValueError, 'window size unavailable'):
+                g.request(['launch', '526870', 'keep'])
+            self.assertEqual(invoke.call_count, 1)
+            self.assertEqual(invoke.call_args.args[-1], '--print-args')
+            invoke.reset_mock()
+            g.request(['launch', '526870', 'close'])
+            self.assertEqual(invoke.call_args.args[0], 'systemd-run')
+
     def test_session_shared_wsi_policy_and_native_routing(self):
         # Execute the real shell branches, replacing external launch commands.
         # Inherit WSI=1 to exercise precedence over a pre-enabled layer.
         with tempfile.TemporaryDirectory() as tmp:
-            script=Path(tmp)/'rocknix-games-session'
-            script.write_bytes(Path('payload/bin/rocknix-games-session').read_bytes())
-            helper=Path(tmp)/'rocknix-games'
+            script=stage_session(Path(tmp))
+            helper=script.with_name('rocknix-games')
             helper.write_text('#!/bin/sh\nprintf "/native/Game.desktop\\n"\n')
             helper.chmod(0o755)
             harness='''
@@ -60,9 +104,9 @@ builtin source "$@"
                     else:
                         self.assertEqual(result[1],'/usr/bin/gamescope')
                         self.assertIn('wayland',result)
+                        self.assertEqual(result[4:12], ['-W','1920','-H','953','-w','1920','-h','953'])
 
     def test_keep_restarts_only_for_steam_exit_42(self):
-        script=str(Path('payload/bin/rocknix-games-session').resolve())
         harness=r'''
 source() {
   if [[ $1 == /usr/bin/start_steam.sh ]]; then
@@ -101,6 +145,7 @@ builtin source "$1" 526870 keep
         for statuses, compositor_status, mode, launches, expected in cases:
             with self.subTest(statuses=statuses, compositor=compositor_status, mode=mode), tempfile.TemporaryDirectory() as tmp:
                 root=Path(tmp)
+                script=str(stage_session(root))
                 (root/'statuses').write_text(json.dumps(statuses))
                 steam=root/'steam'
                 steam.write_text('''#!/usr/bin/python3
@@ -118,7 +163,7 @@ raise SystemExit(status)
                 steam.chmod(0o755)
                 env=dict(os.environ,FIXTURE_DIR=tmp,FIXTURE_MODE=mode,
                          FIXTURE_COMPOSITOR_STATUS=str(compositor_status))
-                result=subprocess.run(['bash','-c',harness,'fixture',script],env=env,
+                result=subprocess.run(['bash','-c',harness,script,script],env=env,
                                       text=True,capture_output=True,timeout=10)
                 self.assertEqual(result.returncode,expected,result.stderr)
                 self.assertEqual((root/'compositors').read_text().splitlines(),['gamescope']*launches)
@@ -175,7 +220,7 @@ raise SystemExit(status)
 
     def test_independent_service_and_keep_binding(self):
         for mode in g.MODES:
-            with patch.object(g,'catalog',return_value=[{'id':'526870'}]),patch.object(g,'active',side_effect=lambda u:u=='rocknix-desktop.service'),patch.object(g,'steam_running',return_value=False),patch.object(g,'run') as run,patch.object(g,'publish'):
+            with patch.object(g,'catalog',return_value=[{'id':'526870'}]),patch.object(g,'active',side_effect=lambda u:u=='rocknix-desktop.service'),patch.object(g,'steam_running',return_value=False),patch.object(g,'run',return_value=SimpleNamespace(returncode=0)) as run,patch.object(g,'publish'):
                 g.request(['launch','526870',mode])
                 args=run.call_args.args
                 self.assertIn('--property=KillMode=control-group',args)

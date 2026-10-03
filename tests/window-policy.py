@@ -53,6 +53,15 @@ print('[{"success":true}]')
     area = json.loads((root / 'workarea.json').read_text())
     assert area['workspace']['height'] == 1000
     assert area['output']['name'] == 'DSI-1'
+    assert area['client'] is None
+    tiled = window(15, title='App', focused=True, window_rect=dict(x=0,y=47,width=1920,height=953))
+    floating = window(16, window_rect=dict(x=0,y=0,width=640,height=360))
+    run(dict(type='output', name='DSI-1', scale=1.25, rect=dict(x=0,y=0,width=1920,height=1080),
+             nodes=[workspace([tiled], [floating])]))
+    area = json.loads((root / 'workarea.json').read_text())
+    assert area['client']['height'] == 953
+    assert area['output']['scale'] == 1.25
+    assert area['updated_at'] > 0
     run(dict(type='output', name='DSI-1', rect=dict(x=0,y=0,width=1920,height=1080),
              nodes=[workspace(height=622)]))
     assert json.loads((root / 'workarea.json').read_text())['workspace']['height'] == 622

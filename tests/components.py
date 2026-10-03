@@ -53,6 +53,7 @@ with tempfile.TemporaryDirectory(prefix='rocknix-components-test-') as temp:
         'build-support/mpv-ffmpeg/build.sh': {'mpv-media'},
         'build-support/trash/mount-identity.h': {'trash-packages', 'guest-base'},
         'rootfs-overlay/usr/local/bin/rocknix-container-update': {'guest-integration', 'host-integration'},
+        'rootfs-overlay/usr/local/bin/rocknix-gamescope': {'guest-integration', 'host-integration'},
     }
     for name, expected in cases.items():
         path = source / name; old = path.read_bytes(); path.write_bytes(old + b'\n# changed\n')
