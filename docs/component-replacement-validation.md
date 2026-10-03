@@ -92,3 +92,58 @@ the successful media checks used the packaged codecs with native graphics.
 
 RP6 was left with Desktop active, Steam stopped, test-owned preservation
 fixtures removed, and the original packaged graphics selection restored.
+
+## One-tap controller follow-up — 2026-10-03
+
+The final controller candidate is commit
+`520eef54a9cd2a7adc3c0cc34e55fe1fcb9a201d`, component manifest SHA-256
+`57eb9ea2a4b7896cc3fea685dce69fd748719e9eb9ed2f33843d561122e22d26`.
+The full source checks passed, followed by a clean local component build and
+home-preserving replacement on RP6. Guest and host integration were rebuilt;
+nine components were reused. The audited local Trash override still makes this
+a local validation build, not a publishable release.
+
+The panel's Pad button is always available and directly toggles Desktop/Game.
+Every new Desktop session starts with automatic focus detection. The first tap
+latches manual control until Desktop exits; subsequent taps toggle that choice.
+Steam exit and focus changes do not override it. There is no controller menu.
+
+Actual-device scripted checks invoked the installed guest click handler, rather
+than a physical touchscreen tap:
+
+- A separately launched guest Gamescope window with `glxgears` selected Game
+  controls when focused; Thunar selected Desktop controls. Both public state
+  and the actual InputPlumber profile path were checked.
+- Both manual choices remained selected across guest Gamescope/Desktop focus
+  changes. The button still worked after the guest Gamescope process exited.
+- Satisfactory reached the main menu through the installed guest launch bridge
+  in both Keep Desktop and Close Desktop modes. Native Steam-scope focus
+  detection and both manual overrides passed with Desktop retained. Manual Game
+  remained selected after Steam exited.
+- Exiting Desktop removed controller session state and restored the original
+  native profile. New Desktop sessions returned to Auto/Desktop. Native DRM game
+  exit restored Desktop normally.
+- Both Satisfactory runs retained the generic WSI bypass policy, had no mapped
+  FROG WSI layer, and showed no swapchain assertion during these menu checks.
+
+The guest compositor test used ARM64 Debian backports Gamescope
+`3.16.22+ds-1~bpo13+1` with `--backend sdl` and `SDL_VIDEODRIVER=wayland`.
+Its direct `--backend wayland` attempt failed before producing a window with
+`physical device has no primary node` and a Wayland Vulkan surface error. This
+was a probe-backend adjustment, not a product driver or launch-policy change.
+All eleven temporary packages and the temporary APT source were removed;
+preexisting packages and automatic marks were preserved. An unrelated
+`pd2-launcher` addition that appeared during testing was retained.
+
+Guest detection qualifies real Gamescope Wayland clients using their executable,
+mapped UID namespace and LXC cgroup, without relying on titles or launch-menu
+ownership. X11-only and FEX-wrapped compositor detection were not qualified.
+Profile switching does not grant guest controller device access: the current
+LXC does not expose `/dev/input`. This pass validates profile routing, not guest
+gamepad passthrough or physical gameplay. FPS, overlay and long-duration stability
+were not measured.
+
+RP6 was left with Desktop active, Steam stopped, Auto/Desktop controls, the
+original packaged graphics selection, and test-owned home fixtures removed.
+The local receipt identifies the exact candidate above. No push or hosted build
+was triggered. This follow-up report does not change the tested runtime bytes.
