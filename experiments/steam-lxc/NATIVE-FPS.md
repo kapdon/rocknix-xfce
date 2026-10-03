@@ -341,3 +341,55 @@ correct saved native profile. Both runs ended with Desktop/Sway active and the
 game lease cleared. Across the initial six and these final two runs, the WSI-off
 path had eight successful menu launches with no swapchain assertion. This does
 not expand the hardware/gameplay qualification beyond the scenarios above.
+## Native scope integration — 2026-10-03
+
+The [native Steam decision](../../docs/native-steam.md) records the accepted
+host-root compatibility model and deferred privilege-separation research.
+Both Desktop modes now use installed ROCKNIX's `steam-bigpicture.scope`;
+the Desktop service only supervises transitions, memory and controller state.
+Close mode no longer forces `_STEAM_SCOPE=1` to suppress native scope creation.
+Keep mode calls the installed scope helper before its nested Gamescope command.
+
+RP6 validation of the deployed helpers:
+
+- **Close Desktop:** requested Satisfactory through the Desktop host-control FIFO;
+  LXC and Sway stopped, native DRM launched, fresh game logs and a screenshot
+  confirmed the main menu. Observed at the 60-second poll, then held for 20 seconds.
+- **Keep Desktop:** the same request bridge reached the main menu with LXC and
+  Sway active, also observed at the 60-second poll and held for 20 seconds.
+  Focusing the native-scope Gamescope window switched Automatic controls to Game.
+- Both game processes were in `steam-bigpicture.scope`, had host UID 0, inherited
+  `ENABLE_GAMESCOPE_WSI=0` / `DISABLE_GAMESCOPE_WSI=1`, and had no Gamescope WSI
+  layer mapped. These are startup/menu results, not FPS or gameplay measurements.
+- A separate Keep launch exercised manual Game/Desktop controller overrides and
+  return to Auto, then killed the supervisor's main process with SIGKILL. Its
+  recovery stopped the independent native scope and restored Desktop controls.
+- Normal stops in both modes removed the scope and session journal, restored
+  Desktop/Sway and the desktop controller profile, and left no Steam process.
+- The deployed maintenance helper rejected an active session's recovery journal.
+  Source tests also cover the cleanup interval, failed scope cleanup and missing
+  scope-helper failure. All 15 games tests and the full project checks passed.
+
+The existing nested 1280×720 presentation within the larger desktop remains;
+this scope change does not fix nested sizing. Physical controller play, overlay,
+audio and long gameplay were not requalified by these scripted menu checks.
+
+The early Close attempt failed with Steam SIGBUS while `/dev/shm` was full;
+the decision document records the one-time stale allocation cleanup. The two
+main-menu passes above occurred afterward. No automatic shared-memory deletion,
+native firmware/script edits or per-game workarounds were introduced.
+
+Tested helper SHA-256 values:
+
+| Helper | SHA-256 |
+| --- | --- |
+| `rocknix-games` | `e918d3e96730880cf92f36ff93f0fbe9f8acd36d15ea8ab4864502ec91549fae` |
+| `rocknix-games-session` | `fd7bc05f501a4ef6d5745c90aeab5ecdc468b3c33baaea99203ad06c0857b088` |
+| `rocknix-desktop-maintenance` | `544886cc24bb2c2c655c18fa8cfd911a75ce5b3fd4bcc6b9cf75a6bcf7a95ea7` |
+| `rocknix-lxc-upgrade` | `ef5a1943f6e1454226dc7a7d05f7d71fcf909353bec3f1907017eb6b9eb61603` |
+
+Local evidence: `/tmp/rocknix-steam-identity/native-scope-evidence.tar.gz` and
+`check-native-scope-final.log`. Remote trial directories are
+`/tmp/satisfactory-wsi-fix/scope-{close,keep}` and
+`/tmp/rocknix-native-scope/keep`. Source snapshots before deployment are retained
+under `/tmp/rocknix-native-scope/*.before` on the dev device.

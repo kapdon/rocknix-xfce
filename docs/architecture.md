@@ -55,6 +55,16 @@ panel-only failure. Recovery after arbitrary power loss is not guaranteed.
   `/storage/scripts` is not mounted: host maintenance scripts are not a Desktop
   dependency. Host-root SSH access is unchanged.
 
+Native Steam is an explicit exception to the guest isolation boundary. Following
+ROCKNIX's appliance model, Steam and its native launch chain run as host root in
+`steam-bigpicture.scope`. Shared game storage includes Steam client/runtime/game
+files that Desktop can edit; those files may later execute as host root. This is
+an accepted compatibility tradeoff, not a security boundary against untrusted
+Desktop applications. The games bridge validates requests but does not make
+shared executable content trustworthy.
+See the [native Steam decision](native-steam.md) for source evidence, scope
+ownership and the deferred privilege-separation direction.
+
 The packaged GLib/GVfs Trash handling accounts for separate home/shared bind
 mounts. See the [package policy](../build-support/trash/README.md).
 

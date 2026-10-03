@@ -16,6 +16,7 @@ STATE = BASE / 'state/games.json'
 PUBLIC = Path('/run/rocknix-desktop/games.json')
 LEASE = Path('/run/rocknix-desktop-games')
 UNIT = 'rocknix-desktop-games.service'
+SCOPE = 'steam-bigpicture.scope'
 SHORTCUTS = Path('/storage/.local/share/applications')
 MODES = ('close', 'keep')
 
@@ -95,11 +96,11 @@ PROC = Path('/proc')
 
 
 def focused_game(tree):
-    """Trust the focused process's service membership, never a window title."""
+    """Trust native Steam scope membership, never a window title."""
     if tree.get('focused') and tree.get('pid'):
         try:
             groups = PROC / str(int(tree['pid'])) / 'cgroup'
-            return any(UNIT in line.split(':', 2)[-1].split('/')
+            return any(SCOPE in line.split(':', 2)[-1].split('/')
                        for line in groups.read_text().splitlines())
         except (OSError, ValueError):
             return False
@@ -149,7 +150,9 @@ def request(words):
         publish()
         return
     if words == ['stop']:
-        run('systemctl', 'stop', '--no-block', UNIT)
+        result = run('systemctl', 'stop', '--no-block', UNIT, check=False)
+        if result.returncode and active(UNIT):
+            raise ValueError('Could not stop the Steam session')
     elif len(words) == 2 and words[0] == 'controls' and words[1] in ('auto', 'desktop', 'game'):
         saved = json.loads((LEASE / 'session.json').read_text())
         if not active(UNIT) or saved['mode'] != 'keep' or 'controller' not in saved:
@@ -163,11 +166,11 @@ def request(words):
             raise ValueError('Game is no longer in the ROCKNIX Steam list')
         if (LEASE / 'session.json').exists() and not active(UNIT):
             raise ValueError('Previous game session needs host recovery')
-        if active(UNIT) or steam_running() or active('steam-bigpicture.scope'):
+        if active(UNIT) or steam_running() or active(SCOPE):
             raise ValueError('Close the existing Steam session first')
         if not active('rocknix-desktop.service'):
             raise ValueError('Desktop is no longer running')
-        properties = ['--property=KillMode=control-group', '--property=TimeoutStopSec=90',
+        properties = ['--property=KillMode=control-group', '--property=TimeoutStopSec=180',
                       '--property=TasksMax=1200',
                       f'--property=ExecStopPost={BASE}/bin/rocknix-games recover']
         if selected == 'keep':
@@ -185,6 +188,14 @@ def recover():
     if not path.exists():
         return
     saved = json.loads(path.read_text())
+    # Native Steam lives outside our supervisor's cgroup. Reap its scope before
+    # restoring binfmt, controllers or Desktop, including after supervisor death.
+    if saved.get('scope') == SCOPE:
+        # stop may report "not loaded" when launch failed before scope creation.
+        run('systemctl', 'stop', SCOPE, check=False, timeout=120)
+        state = run('systemctl', 'show', '--property=ActiveState', '--value', SCOPE).stdout.strip()
+        if state not in ('inactive', 'failed'):
+            raise ValueError('Native Steam scope did not stop; session record retained')
     for name, enabled in saved['binfmt'].items():
         target = Path('/proc/sys/fs/binfmt_misc') / name
         if target.exists():
@@ -195,7 +206,7 @@ def recover():
         control_profile(saved, 'desktop')
     CONTROL_PUBLIC.unlink(missing_ok=True)
     CONTROL.unlink(missing_ok=True)
-    # ExecStopPost runs only after the entire owned cgroup has been reaped.
+    # ExecStopPost has now reaped both the supervisor and native Steam scope.
     state = run('systemctl', 'is-system-running', check=False).stdout.strip()
     if saved['mode'] == 'close' and saved.get('desktop_stopped') and state not in ('stopping', 'offline'):
         # Close mode must not be ordered after/bound to Sway: DRM stops it,
@@ -224,11 +235,11 @@ def session(app, selected):
     with open(LEASE / 'lock', 'w') as lock, open('/storage/.rocknix-desktop-install.lock', 'r+') as install:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         fcntl.flock(install, fcntl.LOCK_SH | fcntl.LOCK_NB)
-        if steam_running() or active('steam-bigpicture.scope'):
+        if steam_running() or active(SCOPE):
             raise ValueError('Native Steam is already running')
         if not active('rocknix-desktop.service'):
             raise ValueError('Desktop stopped before launch')
-        saved = {'mode': selected, 'desktop_stopped': False, 'binfmt': {}}
+        saved = {'mode': selected, 'desktop_stopped': False, 'binfmt': {}, 'scope': SCOPE}
         for name in ('x86', 'box32', 'box64'):
             path = Path('/proc/sys/fs/binfmt_misc') / name
             if path.exists():
@@ -247,11 +258,19 @@ def session(app, selected):
             run('systemctl', 'stop', 'essway.service')
         for name in saved['binfmt']:
             (Path('/proc/sys/fs/binfmt_misc') / name).write_text('0')
-        child = subprocess.Popen(['/bin/bash', str(BASE / 'bin/rocknix-games-session'), app, selected],
-                                 env={'PATH': '/usr/bin:/usr/sbin:/bin:/sbin', 'HOME': '/storage'})
+        # Inherit the system service's identity variables; the shell loads the
+        # installed ROCKNIX profile. Do not manufacture USER/LOGNAME ourselves.
+        env = dict(os.environ)
+        env.pop('_STEAM_SCOPE', None)
+        child = subprocess.Popen(['/bin/bash', str(BASE / 'bin/rocknix-games-session'), app, selected], env=env)
         # The host watchdog includes compositor memory outside the LXC cgroup.
         controller = None
+        scope_seen = False
         while child.poll() is None:
+            if not scope_seen and active(SCOPE):
+                # The workload moved to the native scope; retain the host guard.
+                run('systemctl', 'set-property', '--runtime', SCOPE, 'TasksMax=1200')
+                scope_seen = True
             if selected == 'keep':
                 controller = control_tick(saved, controller)
             available = next(int(line.split()[1]) for line in Path('/proc/meminfo').read_text().splitlines()
@@ -260,8 +279,8 @@ def session(app, selected):
                 print('Stopping gamescope: less than 1.5 GiB available RAM', flush=True)
                 break
             time.sleep(.5)
-        # Exiting the main service reaps Steam, gamescope and game descendants.
-        # Durable recovery belongs to ExecStopPost, including on forced kills.
+        # The native scope call is synchronous. On exit or watchdog failure,
+        # ExecStopPost stops the independent scope before restoring Desktop.
 
 
 if __name__ == '__main__':

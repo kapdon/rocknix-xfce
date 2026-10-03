@@ -26,25 +26,45 @@ class Games(unittest.TestCase):
             helper.write_text('#!/bin/sh\nprintf "/native/Game.desktop\\n"\n')
             helper.chmod(0o755)
             harness='''
-source() { :; }
+source() {
+  if [[ $1 == /usr/bin/start_steam.sh ]]; then
+    steam_scope_reexec_if_needed() {
+      [[ $STEAM_MAIN_SCRIPT == /* && $1 =~ ^[0-9]+$ && $2 == keep ]] || exit 9
+      printf 'NATIVE_SCOPE_HELPER\\n'
+    }
+  fi
+}
 exec() {
+  [[ $USER == fixture-user && $LOGNAME == fixture-login ]] || exit 10
+  if [[ $2 == /native/Game.desktop ]]; then
+    [[ ! -v _STEAM_SCOPE ]] || exit 11
+  fi
   printf 'WSI=%s DISABLE=%s\\n' "${ENABLE_GAMESCOPE_WSI-unset}" "${DISABLE_GAMESCOPE_WSI-unset}"
   printf '%s\\n' "$@"
   exit
 }
 builtin source "$@"
 '''
-            env=dict(os.environ,ENABLE_GAMESCOPE_WSI='1')
+            env=dict(os.environ,ENABLE_GAMESCOPE_WSI='1',USER='fixture-user',LOGNAME='fixture-login',_STEAM_SCOPE='1')
             env.pop('DISABLE_GAMESCOPE_WSI',None)
             for app in ('526870','123','12345678901234567890'):
                 for mode in ('close','keep'):
                     result=subprocess.run(['bash','-c',harness,str(script),str(script),app,mode],env=env,text=True,capture_output=True,check=True).stdout.splitlines()
+                    if mode=='keep':
+                        self.assertEqual(result.pop(0),'NATIVE_SCOPE_HELPER')
                     self.assertEqual(result[0],'WSI=0 DISABLE=1')
                     if mode=='close':
                         self.assertEqual(result[1:3],['/usr/bin/runemu.sh','/native/Game.desktop'])
                     else:
                         self.assertEqual(result[1],'/usr/bin/gamescope')
                         self.assertIn('wayland',result)
+
+    def test_missing_native_scope_helper_fails_closed(self):
+        script=str(Path('payload/bin/rocknix-games-session').resolve())
+        harness='source() { :; }; builtin source "$@"'
+        result=subprocess.run(['bash','-c',harness,script,script,'526870','keep'],text=True,capture_output=True)
+        self.assertNotEqual(result.returncode,0)
+        self.assertIn('ROCKNIX Steam scope helper is unavailable',result.stderr)
 
     def test_catalog_tracks_native_shortcuts(self):
         with tempfile.TemporaryDirectory() as tmp,patch.object(g,'SHORTCUTS',Path(tmp)):
@@ -77,6 +97,12 @@ builtin source "$@"
             with self.assertRaises(ValueError):g.request(['launch','526870','close'])
             run.assert_not_called()
 
+    def test_stop_after_native_exit_is_idempotent(self):
+        with patch.object(g,'run',return_value=SimpleNamespace(returncode=5)),patch.object(g,'active',return_value=False),patch.object(g,'publish'):
+            g.request(['stop'])
+        with patch.object(g,'run',return_value=SimpleNamespace(returncode=1)),patch.object(g,'active',return_value=True),patch.object(g,'publish'):
+            with self.assertRaisesRegex(ValueError,'Could not stop'):g.request(['stop'])
+
     def test_independent_service_and_keep_binding(self):
         for mode in g.MODES:
             with patch.object(g,'catalog',return_value=[{'id':'526870'}]),patch.object(g,'active',side_effect=lambda u:u=='rocknix-desktop.service'),patch.object(g,'steam_running',return_value=False),patch.object(g,'run') as run,patch.object(g,'publish'):
@@ -108,12 +134,32 @@ builtin source "$@"
     def test_focus_requires_owned_process(self):
         with tempfile.TemporaryDirectory() as tmp,patch.object(g,'PROC',Path(tmp)):
             p=Path(tmp)/'123';p.mkdir()
-            (p/'cgroup').write_text('0::/system.slice/' + g.UNIT + '\n')
+            (p/'cgroup').write_text('0::/system.slice/' + g.SCOPE + '\n')
             self.assertTrue(g.focused_game({'floating_nodes':[{'focused':True,'pid':123}]}))
             self.assertFalse(g.focused_game({'focused':False,'pid':123}))
             self.assertFalse(g.focused_game({'focused':True,'pid':456,'name':'Steam'}))
-            (p/'cgroup').write_text('0::/system.slice/fake-' + g.UNIT + '\n')
+            (p/'cgroup').write_text('0::/system.slice/fake-' + g.SCOPE + '\n')
             self.assertFalse(g.focused_game({'focused':True,'pid':123}))
+            (p/'cgroup').write_text('0::/system.slice/' + g.UNIT + '\n')
+            self.assertFalse(g.focused_game({'focused':True,'pid':123}))
+
+    def test_native_scope_stops_before_recovery(self):
+        for state in ('inactive','failed','active','deactivating',''):
+            with tempfile.TemporaryDirectory() as tmp,patch.object(g,'LEASE',Path(tmp)),patch.object(g.time,'sleep'),patch.object(g,'active',return_value=True):
+                journal=Path(tmp)/'session.json'
+                journal.write_text(json.dumps({'mode':'close','desktop_stopped':True,'binfmt':{},'scope':g.SCOPE}))
+                def invoke(*args,**kwargs):
+                    return SimpleNamespace(stdout=state if args[1]=='show' else 'running')
+                with patch.object(g,'run',side_effect=invoke) as run:
+                    if state in ('inactive','failed'):
+                        g.recover()
+                        self.assertFalse(journal.exists())
+                        self.assertEqual(run.call_args_list[0].args,('systemctl','stop',g.SCOPE))
+                        self.assertEqual(run.call_args_list[-1].args,('systemctl','start','rocknix-desktop.service'))
+                    else:
+                        with self.assertRaisesRegex(ValueError,'scope did not stop'):g.recover()
+                        self.assertTrue(journal.exists())
+                        self.assertFalse(any(c.args[1]=='start' for c in run.call_args_list))
 
     def test_manual_override_and_auto(self):
         with tempfile.TemporaryDirectory() as tmp,patch.object(g,'CONTROL',Path(tmp)/'mode'),patch.object(g,'CONTROL_PUBLIC',Path(tmp)/'public'),patch.object(g,'control_profile') as profile,patch.object(g.subprocess,'run',return_value=SimpleNamespace(stdout='{}')),patch.object(g,'focused_game',return_value=True):

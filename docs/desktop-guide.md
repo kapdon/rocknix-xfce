@@ -108,6 +108,12 @@ Settings → Gamescope settings controls what happens when one is launched:
 The choice persists across Desktop restarts. Both options run native ARM64 Steam
 outside LXC. Close mode uses the stock ROCKNIX launcher and its game settings;
 keep mode uses nested Wayland gamescope at 1280×720 with host Sway retained.
+Both reuse the installed ROCKNIX Steam scope helper and run in its native
+`steam-bigpicture.scope`, under the host identity used by ROCKNIX. Desktop's
+supervisor handles the Desktop transition, memory guard and controller focus;
+on stop or failure it stops the native scope before restoring Desktop. Keep mode
+requires ROCKNIX's `steam_scope_reexec_if_needed` helper; a firmware without that
+helper reports a launch error instead of silently using another launch path.
 This requires the existing native Steam runtime and installed game libraries;
 it does not install Steam or provide native Steam's broken Browse dialog.
 Close another Steam session before launching here. The launcher owns one game
