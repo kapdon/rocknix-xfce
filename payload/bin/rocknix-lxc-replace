@@ -1,0 +1,184 @@
+#!/usr/bin/python3
+"""Journaled rootfs replacement. Home and shared storage are never operands."""
+import json
+import os
+from pathlib import Path
+import shutil
+import stat
+import subprocess
+
+HOST_MEMBERS = ('host-tools', 'bin', 'input', 'integration', 'README.md',
+                'uninstall.sh', 'upgrade.sh', 'upgrade-lxc.py', 'build-info')
+
+
+def identity(path):
+    info = path.lstat()
+    if not stat.S_ISDIR(info.st_mode):
+        raise RuntimeError('replacement root is not a real directory')
+    return [info.st_dev, info.st_ino]
+
+
+def sync_directory(path):
+    fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+class Replacement:
+    def __init__(self, api):
+        self.api = api
+        self.host, self.root = api['BASE'], api['ROOTFS']
+        self.guard, self.workspace = api['GUARD'], api['WORKSPACE']
+        self.native = [api[name] for name in ('UNIT', 'HOOK', 'ENTRY')]
+        self.record = None
+
+    def save(self, phase):
+        self.record['phase'] = phase
+        self.api['atomic'](self.guard, (json.dumps(self.record) + '\n').encode(), 0o600)
+
+    def load(self, checksum):
+        if not os.path.lexists(self.guard):
+            return False
+        info = self.guard.lstat()
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
+            raise RuntimeError('unsafe replacement journal')
+        self.record = json.loads(self.guard.read_text())
+        if (self.record.get('format') != 2 or self.record.get('sha256') != checksum or
+                self.record.get('phase') not in ('prepared', 'activating', 'committed')):
+            raise RuntimeError('resume the interrupted update with its original component manifest')
+        self.work = Path(self.record['work'])
+        if self.work.parent != self.workspace or not self.work.name.startswith('upgrade-lxc.'):
+            raise RuntimeError('invalid replacement staging path')
+        self.api['safe_directory'](self.work)
+        for field in ('old_root', 'new_root'):
+            if (not isinstance(self.record.get(field), list) or len(self.record[field]) != 2 or
+                    not all(type(x) is int and x >= 0 for x in self.record[field])):
+                raise RuntimeError('invalid replacement root identity')
+        return True
+
+    def prepare(self, work, checksum, revision):
+        self.work = work
+        # Assembly already reserved guest space. Budget the host backup and
+        # activation copy as well, before creating the replacement journal.
+        required = 256 * 1024**2
+        for directory in (self.host, work / 'host-tools'):
+            for current, dirs, files in os.walk(directory, followlinks=False):
+                if Path(current) == self.host:
+                    dirs[:] = [name for name in dirs if name in HOST_MEMBERS]
+                    files = [name for name in files if name in HOST_MEMBERS]
+                required += sum(((Path(current) / name).lstat().st_size + 4095) // 4096 * 4096
+                                for name in files)
+        if shutil.disk_usage(work).free < required:
+            raise RuntimeError('insufficient space for replacement host backup and activation')
+        backup = work / 'previous-host'
+        backup.mkdir()
+        for name in HOST_MEMBERS:
+            source = self.host / name
+            if not os.path.lexists(source):
+                continue
+            if source.is_symlink():
+                raise RuntimeError('unexpected linked host member')
+            if source.is_dir():
+                self.api['safe_directory'](source)
+                shutil.copytree(source, backup / name, symlinks=True)
+            else:
+                info = source.lstat()
+                if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
+                    raise RuntimeError('unsafe host backup source')
+                shutil.copy2(source, backup / name)
+        native = work / 'previous-native'
+        native.mkdir()
+        for index, source in enumerate(self.native):
+            if os.path.lexists(source):
+                info = source.lstat()
+                if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
+                    raise RuntimeError('unsafe native integration')
+                shutil.copy2(source, native / str(index))
+        self.record = {'format': 2, 'sha256': checksum, 'commit': revision,
+                       'work': str(work), 'old_root': identity(self.root),
+                       'new_root': identity(work / 'rootfs')}
+        if self.record['old_root'][0] != self.record['new_root'][0]:
+            raise RuntimeError('replacement must be on the rootfs filesystem')
+        # Make backup data durable before a journal can authorize any mutation.
+        os.sync()
+        self.save('prepared')
+
+    def activate(self):
+        self.save('activating')
+        self.root.rename(self.work / 'previous-rootfs')
+        sync_directory(self.root.parent)
+        sync_directory(self.work)
+        (self.work / 'rootfs').rename(self.root)
+        sync_directory(self.root.parent)
+        sync_directory(self.work)
+
+    def rollback(self):
+        if self.record['phase'] != 'activating':
+            return
+        old = self.work / 'previous-rootfs'
+        current = identity(self.root) if os.path.lexists(self.root) else None
+        if os.path.lexists(old):
+            if identity(old) != self.record['old_root']:
+                raise RuntimeError('previous rootfs identity changed')
+            if current is not None:
+                if current != self.record['new_root']:
+                    raise RuntimeError('unexpected replacement rootfs identity')
+                self.api['no_mounts'](self.root)
+                self.root.rename(self.work / 'rootfs')
+                sync_directory(self.root.parent)
+                sync_directory(self.work)
+            old.rename(self.root)
+            sync_directory(self.root.parent)
+            sync_directory(self.work)
+        elif current != self.record['old_root']:
+            raise RuntimeError('cannot locate previous rootfs')
+        # Copies keep rollback restartable even if power fails while restoring.
+        for name in HOST_MEMBERS:
+            destination = self.host / name
+            source = self.work / 'previous-host' / name
+            if os.path.lexists(destination):
+                if destination.is_symlink():
+                    raise RuntimeError('unexpected linked host destination')
+                self.api['no_mounts'](destination)
+                if destination.is_dir():
+                    shutil.rmtree(destination)
+                else:
+                    destination.unlink()
+            if source.is_dir():
+                shutil.copytree(source, destination, symlinks=True)
+            elif source.exists():
+                shutil.copy2(source, destination)
+        for index, destination in enumerate(self.native):
+            source = self.work / 'previous-native' / str(index)
+            if source.exists():
+                self.api['atomic'](destination, source.read_bytes(), stat.S_IMODE(source.stat().st_mode))
+            elif os.path.lexists(destination):
+                if not stat.S_ISREG(destination.lstat().st_mode):
+                    raise RuntimeError('unexpected native integration destination')
+                destination.unlink()
+                sync_directory(destination.parent)
+        subprocess.run(['systemctl', 'daemon-reload'], check=True)
+        os.sync()
+        self.save('prepared')
+
+    def finish(self):
+        # Keep the journal until cleanup finishes. Repeating cleanup is safe.
+        old = self.work / 'previous-rootfs'
+        if self.record['phase'] == 'committed':
+            if identity(self.root) != self.record['new_root']:
+                raise RuntimeError('activated rootfs identity changed')
+            if os.path.lexists(old):
+                if identity(old) != self.record['old_root']:
+                    raise RuntimeError('previous rootfs identity changed')
+                self.api['no_mounts'](old)
+                shutil.rmtree(old)
+            retained = self.host / 'state/uninstalled.json'
+            retained.unlink(missing_ok=True)
+        # Remove the guard before staging, so interruption never leaves a guard
+        # pointing at a partly deleted transaction. Orphan stages are harmless.
+        os.sync()
+        self.guard.unlink()
+        sync_directory(self.guard.parent)
+        self.api['remove_stage'](self.work)
