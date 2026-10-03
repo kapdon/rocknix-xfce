@@ -22,6 +22,7 @@ fi
 python3 "${BASE}/bin/rocknix-display-settings" restore || \
   printf 'WARNING: original display-state restoration failed\n' >&2
 rm -f -- /run/rocknix-desktop/games.json
+rm -f -- /run/rocknix-desktop/controller.json /run/rocknix-desktop-controller.json
 rm -f -- /run/rocknix-desktop/display.json /run/rocknix-desktop/display-metrics.json
 rm -f -- \
   /run/rocknix-desktop/control \

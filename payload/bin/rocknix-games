@@ -89,7 +89,8 @@ def publish(error=''):
     atomic(PUBLIC, {'mode': mode(), 'games': catalog(), 'busy': active(UNIT), 'error': error})
 
 
-CONTROL = LEASE / 'controls.json'
+# Desktop owns controller selection independently of any Steam/game lease.
+CONTROL = Path('/run/rocknix-desktop-controller.json')
 CONTROL_PUBLIC = PUBLIC.with_name('controller.json')
 INPUT_STATE = Path('/run/rocknix-desktop-input-state')
 PROC = Path('/proc')
@@ -129,14 +130,25 @@ def control_tick(saved, previous):
     return target
 
 
-def control_prepare(saved):
+def control_begin():
     original = dict(line.split('=', 1) for line in INPUT_STATE.read_text().splitlines() if '=' in line)
     native = Path(original['profile'])
     desktop = BASE / 'input/desktop.yaml'
     if not native.is_file() or not desktop.is_file():
         raise ValueError('Controller profiles are unavailable')
-    saved['controller'] = {'desktop': str(desktop), 'game': str(native)}
-    atomic(CONTROL, {'mode': 'auto'}, 0o600)
+    saved = {'mode': 'auto', 'controller': {'desktop': str(desktop), 'game': str(native)}}
+    atomic(CONTROL, saved, 0o600)
+    # configure-input has already loaded this profile. Publish before Waybar starts.
+    atomic(CONTROL_PUBLIC, {'mode': 'auto', 'active': 'desktop'})
+
+
+def control_update():
+    saved = json.loads(CONTROL.read_text())
+    try:
+        previous = json.loads(CONTROL_PUBLIC.read_text())['active']
+    except (OSError, ValueError, KeyError):
+        previous = None
+    control_tick(saved, previous)
 
 
 def steam_running():
@@ -154,10 +166,12 @@ def request(words):
         if result.returncode and active(UNIT):
             raise ValueError('Could not stop the Steam session')
     elif len(words) == 2 and words[0] == 'controls' and words[1] in ('auto', 'desktop', 'game'):
-        saved = json.loads((LEASE / 'session.json').read_text())
-        if not active(UNIT) or saved['mode'] != 'keep' or 'controller' not in saved:
-            raise ValueError('No Desktop game session is running')
-        atomic(CONTROL, {'mode': words[1]}, 0o600)
+        if not active('rocknix-desktop.service'):
+            raise ValueError('Desktop is no longer running')
+        saved = json.loads(CONTROL.read_text())
+        saved['mode'] = words[1]
+        atomic(CONTROL, saved, 0o600)
+        control_update()
     elif len(words) == 2 and words[0] == 'mode' and words[1] in MODES:
         atomic(STATE, {'mode': words[1]}, 0o600)
     elif len(words) == 3 and words[0] == 'launch':
@@ -202,10 +216,7 @@ def recover():
             target.write_text('1' if enabled else '0')
     for name, governor in saved.get('governors', {}).items():
         Path(name).write_text(governor)
-    if 'controller' in saved and active('rocknix-desktop.service'):
-        control_profile(saved, 'desktop')
-    CONTROL_PUBLIC.unlink(missing_ok=True)
-    CONTROL.unlink(missing_ok=True)
+    # Desktop's controller loop owns manual overrides and survives game exit.
     # ExecStopPost has now reaped both the supervisor and native Steam scope.
     state = run('systemctl', 'is-system-running', check=False).stdout.strip()
     if saved['mode'] == 'close' and saved.get('desktop_stopped') and state not in ('stopping', 'offline'):
@@ -248,8 +259,6 @@ def session(app, selected):
             saved['governors'] = {str(p): p.read_text().strip() for pattern in
                 ('devices/system/cpu/cpufreq/policy*/scaling_governor', 'class/devfreq/*/governor')
                 for p in Path('/sys').glob(pattern)}
-        if selected == 'keep':
-            control_prepare(saved)
         atomic(LEASE / 'session.json', saved, 0o600)
         if selected == 'close':
             saved['desktop_stopped'] = True
@@ -264,15 +273,12 @@ def session(app, selected):
         env.pop('_STEAM_SCOPE', None)
         child = subprocess.Popen(['/bin/bash', str(BASE / 'bin/rocknix-games-session'), app, selected], env=env)
         # The host watchdog includes compositor memory outside the LXC cgroup.
-        controller = None
         scope_seen = False
         while child.poll() is None:
             if not scope_seen and active(SCOPE):
                 # The workload moved to the native scope; retain the host guard.
                 run('systemctl', 'set-property', '--runtime', SCOPE, 'TasksMax=1200')
                 scope_seen = True
-            if selected == 'keep':
-                controller = control_tick(saved, controller)
             available = next(int(line.split()[1]) for line in Path('/proc/meminfo').read_text().splitlines()
                              if line.startswith('MemAvailable:'))
             if available < 1536 * 1024:
@@ -292,6 +298,10 @@ if __name__ == '__main__':
             publish()
         elif action == 'shortcut' and len(args) == 1:
             print(shortcut(args[0]))
+        elif action == 'controls-begin' and not args:
+            control_begin()
+        elif action == 'controls-tick' and not args:
+            control_update()
         elif action == 'request':
             request(args)
         elif action == 'session' and len(args) == 2:

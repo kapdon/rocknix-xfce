@@ -110,7 +110,7 @@ outside LXC. Close mode uses the stock ROCKNIX launcher and its game settings;
 keep mode uses nested Wayland gamescope at 1280×720 with host Sway retained.
 Both reuse the installed ROCKNIX Steam scope helper and run in its native
 `steam-bigpicture.scope`, under the host identity used by ROCKNIX. Desktop's
-supervisor handles the Desktop transition, memory guard and controller focus;
+supervisor handles the Desktop transition and memory guard;
 on stop or failure it stops the native scope before restoring Desktop. Keep mode
 requires ROCKNIX's `steam_scope_reexec_if_needed` helper; a firmware without that
 helper reports a launch error instead of silently using another launch path.
@@ -126,19 +126,22 @@ performance may differ from native WSI-enabled sessions. Nested mode also disabl
 frame generation. Close mode retains ROCKNIX's other per-game settings, including
 its frame-generation choice.
 
-While a **Keep Desktop** Steam session runs, the panel shows **Pad: Game** or
-**Pad: Desktop**. Tap it to choose:
+The panel always shows **Pad: Game** or **Pad: Desktop** while Desktop is
+running, including before a game starts. Tap it to choose:
 
-- **Automatic** (the default for each session): native gamepad controls when our
-  Steam/gamescope window has focus; Desktop mouse/keyboard mappings elsewhere.
+- **Automatic** (the default for each Desktop session): native gamepad controls
+  when a native Steam/gamescope scope window has focus; Desktop mappings elsewhere.
 - **Desktop controls**: force pointer and Desktop shortcuts regardless of focus.
-- **Game controls**: force the native controller profile for Steam Input.
+- **Game controls**: force the native gamepad profile regardless of focus or how
+  a game was launched. Use this for unrecognized or separately launched games.
 
 Only the InputPlumber profile changes; the virtual DualSense stays connected.
-The override lasts for that session. Stopping the session, including a supervisor
-crash, restores Desktop controls and removes the panel control. If the focus
-watcher fails, the game session ends and recovery restores Desktop controls.
-Close Desktop continues to use the ordinary native ROCKNIX input lifecycle.
+Manual choices last until changed or Desktop exits, including across Steam game
+launches and exits. Automatic detection is not required for manual switching.
+Switching profiles does not grant a guest application new device access; the game
+must already be able to read a controller, and some games only detect it at startup.
+Exiting Desktop restores ROCKNIX's original profile and targets. Close Desktop
+continues to use the ordinary native ROCKNIX input lifecycle.
 
 RP6 validation currently covers Satisfactory reaching its main menu and the
 Desktop lifecycle, not loaded-factory gameplay, controller/audio acceptance or a

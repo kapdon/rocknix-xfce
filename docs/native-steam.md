@@ -55,10 +55,12 @@ library or changes to the installed ROCKNIX scripts are required.
   Normal exits, compositor failures without a client restart request, and stop
   signals end the session.
 - `rocknix-desktop-games.service` supervises Desktop transitions, the available
-  memory guard and controller focus. Steam and its children live in the native
-  scope, not the supervisor service. Focus detection follows scope membership.
+  memory guard. Steam and its children live in the native scope, not the
+  supervisor service. Desktop owns the always-available controller selector;
+  automatic focus detection follows native scope membership.
 - Stop/failure recovery stops the native scope before restoring binfmt,
-  controller profiles and Desktop. Failed cleanup retains the journal. The
+  Desktop when it was closed. Manual controller selection in a retained Desktop
+  survives game exit. Failed cleanup retains the journal. The
   native scope receives the session task limit after it appears.
 - Maintenance checks refuse a live Steam scope, an active/transitional supervisor
   or an unfinished session journal. This covers the interval after the

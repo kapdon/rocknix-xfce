@@ -22,7 +22,6 @@ MOUNT_PATHS = {line.split()[4] for line in
 SHARES = tuple(name for name in
                ('Desktop', 'Steam', 'backup', 'games-external', 'games-internal')
                if '/storage/' + name in MOUNT_PATHS)
-assert SHARES, 'No shared mounts available for the Trash test'
 
 
 def test_environment(runtime):
@@ -147,6 +146,7 @@ def restart_worker(phase, token):
 
 
 def main():
+    assert SHARES, 'No shared mounts available for the Trash test'
     args = sys.argv[1:]
     if args == ['--worker']:
         worker()

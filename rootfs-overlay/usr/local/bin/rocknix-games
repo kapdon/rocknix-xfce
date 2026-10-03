@@ -48,7 +48,7 @@ def main():
         selected = menu('Controller controls', [
             ('Automatic · follow window focus', 'auto'),
             ('Desktop controls · pointer and shortcuts', 'desktop'),
-            ('Game controls · Steam Input', 'game'), ('Back', None)])
+            ('Game controls · native gamepad', 'game'), ('Back', None)])
         if selected:
             send('controls', selected)
         return

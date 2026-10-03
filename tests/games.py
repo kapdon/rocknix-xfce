@@ -277,12 +277,44 @@ raise SystemExit(status)
             self.assertEqual(g.control_tick({},'desktop'),'game')
             self.assertEqual(json.loads(g.CONTROL_PUBLIC.read_text())['mode'],'auto')
 
-    def test_keep_recovery_restores_controller(self):
+    def test_controls_without_game_lease(self):
+        with tempfile.TemporaryDirectory() as tmp,patch.object(g,'CONTROL',Path(tmp)/'mode'),patch.object(g,'CONTROL_PUBLIC',Path(tmp)/'public'),patch.object(g,'LEASE',Path(tmp)/'absent'),patch.object(g,'control_profile') as profile,patch.object(g,'active',side_effect=lambda unit:unit=='rocknix-desktop.service'),patch.object(g,'publish'),patch.object(g.subprocess,'run') as sway:
+            saved={'mode':'auto','controller':{'desktop':'desktop','game':'native'}}
+            g.atomic(g.CONTROL,saved,0o600)
+            g.atomic(g.CONTROL_PUBLIC,{'mode':'auto','active':'desktop'})
+            g.request(['controls','game'])
+            self.assertEqual(json.loads(g.CONTROL_PUBLIC.read_text()),{'mode':'game','active':'game'})
+            profile.assert_called_once_with(dict(saved,mode='game'),'game')
+            profile.reset_mock()
+            # A manual choice survives future ticks without consulting focus.
+            g.control_update();profile.assert_not_called();sway.assert_not_called()
+            g.request(['controls','desktop'])
+            self.assertEqual(json.loads(g.CONTROL_PUBLIC.read_text())['active'],'desktop')
+            self.assertFalse(g.LEASE.exists())
+            with patch.object(g,'active',return_value=False),self.assertRaisesRegex(ValueError,'Desktop'):
+                g.request(['controls','game'])
+
+    def test_controller_initializes_for_each_desktop(self):
+        with tempfile.TemporaryDirectory() as tmp,patch.object(g,'BASE',Path(tmp)),patch.object(g,'INPUT_STATE',Path(tmp)/'input-state'),patch.object(g,'CONTROL',Path(tmp)/'mode'),patch.object(g,'CONTROL_PUBLIC',Path(tmp)/'public'):
+            native=Path(tmp)/'native.yaml';native.touch()
+            desktop=Path(tmp)/'input/desktop.yaml';desktop.parent.mkdir();desktop.touch()
+            g.INPUT_STATE.write_text('profile='+str(native)+'\n')
+            g.atomic(g.CONTROL,{'mode':'game'})
+            g.control_begin()
+            self.assertEqual(json.loads(g.CONTROL_PUBLIC.read_text()),{'mode':'auto','active':'desktop'})
+            self.assertEqual(json.loads(g.CONTROL.read_text())['controller']['game'],str(native))
+            self.assertEqual(g.CONTROL.stat().st_mode & 0o777,0o600)
+
+    def test_keep_recovery_preserves_desktop_controller_selection(self):
         with tempfile.TemporaryDirectory() as tmp,patch.object(g,'LEASE',Path(tmp)),patch.object(g,'CONTROL',Path(tmp)/'mode'),patch.object(g,'CONTROL_PUBLIC',Path(tmp)/'public'),patch.object(g,'control_profile') as profile,patch.object(g,'active',return_value=True),patch.object(g,'run',return_value=SimpleNamespace(stdout='running')),patch.object(g,'publish'):
-            saved={'mode':'keep','binfmt':{},'controller':{'desktop':'desktop','game':'native'}}
+            saved={'mode':'keep','binfmt':{}}
             (Path(tmp)/'session.json').write_text(json.dumps(saved))
+            g.atomic(g.CONTROL,{'mode':'game'})
+            g.atomic(g.CONTROL_PUBLIC,{'mode':'game','active':'game'})
             g.recover()
-            profile.assert_called_once_with(saved,'desktop')
+            profile.assert_not_called()
+            self.assertEqual(json.loads(g.CONTROL.read_text())['mode'],'game')
+            self.assertEqual(json.loads(g.CONTROL_PUBLIC.read_text())['active'],'game')
             self.assertFalse((Path(tmp)/'session.json').exists())
 
     def test_no_restart_during_host_shutdown(self):

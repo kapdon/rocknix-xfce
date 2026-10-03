@@ -228,6 +228,7 @@ host_control_loop() {
           ;;
       esac
     fi
+    "${BASE}/bin/rocknix-games" controls-tick || true
     python3 "${BASE}/bin/rocknix-display-settings" tick || true
     refresh_display_metrics || true
     python3 "${BASE}/bin/rocknix-display-settings" publish || true
@@ -369,6 +370,7 @@ pkill -x wvkbd-mobintl 2>/dev/null || true
 mkdir -p "${RUNTIME_DIR}"
 chmod 0755 "${RUNTIME_DIR}"
 "${BASE}/bin/rocknix-games" publish
+"${BASE}/bin/rocknix-games" controls-begin
 python3 "${BASE}/bin/rocknix-display-settings" begin "${OUTPUT_NAME}"
 refresh_display_metrics
 python3 "${BASE}/bin/rocknix-display-settings" publish
