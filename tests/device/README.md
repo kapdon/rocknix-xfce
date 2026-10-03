@@ -17,7 +17,7 @@ and keep each command's output with that identity.
 | Session recovery | `python3 check-component-recovery.py COMPONENT` | Active Desktop; `COMPONENT` is `waybar`, `wvkbd-rocknix`, `startup`, `stop`, `supervisor` or `guest-init` |
 | Init refusal | `python3 check-init-recovery.py` | Close Desktop; temporarily deny verified guest init execution, restore its exact inode/mode |
 | Preflight refusal | `python3 check-preflight-recovery.py` | Close Desktop; exclusive temporary update guard; verify native restoration and restart |
-| Update persistence | `python3 check-update-ownership.py setup`, `verify`, `cleanup` | Active Desktop around an externally run update; guest account/password hashes, mixed file owners and home data |
+| Update persistence | `python3 check-update-ownership.py setup`, `verify`, `cleanup` | Active Desktop around an externally run update; new rootfs identity; unchanged home inodes, mixed owners, modes, hardlinks, symlinks and xattrs |
 | Host update interruption | `python3 check-update-interruption.py --bundle BUNDLE --sha256 SHA256 --yes` | Desktop inactive; SIGKILL after atomic host launcher replacement; resume with the same bundle/checksum |
 | Shared Trash | `unshare --mount --propagation private python3 check-trash.py --installed-policy` | Run a temporary copy inside LXC as mapped guest root; private buses run as `rocknix`; share fixtures are restored or remain recoverable |
 
@@ -26,8 +26,7 @@ and keep each command's output with that identity.
 apps. If startup override cleanup is interrupted, stop Desktop and run
 `python3 check-component-recovery.py remove-startup-override` before reopening.
 The host-file interruption check retries the ordinary updater with its original
-verified bundle. It requires a healthy, fully configured package database and
-does not repair interrupted package transactions. Do not remove an update
+verified bundle. It uses a complete component manifest and exercises rootfs/host rollback before retry. Do not remove an update
 journal manually.
 
 Failure injections establish only the named checkpoints. They do not simulate

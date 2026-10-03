@@ -4,7 +4,7 @@
 Desktop must already be inactive. Uses the installed updater, inserting one
 fault immediately after a real atomic launcher replacement. Resume afterward
 with the same verified bundle/checksum using the ordinary installed updater.
-No recovery copy or journal bypass is made. This is NOT a power-loss test.
+The updater retains its normal rollback copy; no journal bypass is made. This is NOT a power-loss test.
 """
 import json
 import os
@@ -25,11 +25,11 @@ def main():
         original(path, data, mode)
         if path == base / 'bin/launch-sway-desktop':
             record = json.loads(namespace['GUARD'].read_text())
-            assert record['phase'] == 'installing-host'
+            assert record['phase'] == 'activating'
             assert not namespace['STATE'].exists(), 'maintenance must already be closed'
             assert path.read_bytes() == data
             print('INJECT: SIGKILL after atomic host launcher activation; '
-                  'persistent installing-host journal remains', flush=True)
+                  'persistent replacement journal remains', flush=True)
             os.kill(os.getpid(), signal.SIGKILL)
 
     namespace['atomic'] = interrupted_atomic
