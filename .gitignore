@@ -3,5 +3,6 @@
 __pycache__/
 *.pyc
 .env
+.env.local
 *.log
 /.impeccable/hook.cache.json

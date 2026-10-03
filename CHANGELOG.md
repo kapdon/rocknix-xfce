@@ -17,8 +17,16 @@ the change list.
 - **Gamescope display fitting:** Default nested games to the current Sway
   content area, with an option to use the full monitor resolution and a shared launcher for
   LXC X11/Wine games. Keep the game resolution stable while Gamescope scales
-  window changes. Native DRM launching remains unchanged. Device qualification
-  of this feature is pending.
+  window changes. Native DRM launching remains unchanged. RP6 probes and the
+  user's PD2 Gamescope launch passed; broader input/gameplay acceptance remains.
+- **Component replacement:** Replace the system container on update while preserving
+  home data and metadata; installed system packages and password changes reset.
+  Legacy-export migration and interrupted replacement were tested on RP6.
+- **Guest X11 and controllers:** Supply patched Xwayland, publish Sway work areas,
+  expose the native virtual gamepad, and provide an always-available one-tap
+  Desktop/Game override with secondary Gamescope detection.
+- **Scoped host providers:** Add opt-in native graphics reuse with narrow read-only
+  mounts. Packaged providers remain the default; native codecs remain diagnostic.
 - **Faster development builds:** Reuse unchanged components and rebuild only the
   affected parts, avoiding repeated export and compression of the Debian runtime.
 - **Apps and Settings toggles:** Tap either button again to close its open menu.
@@ -35,6 +43,8 @@ the change list.
 - **Desktop file chooser:** Include the GTK portal backend and preserve its
   configuration through managed component updates. This does not fix native
   Steam's separate Browse dialog.
+
+Current release gaps and evidence boundaries: [0.2.0 readiness](docs/release-readiness-0.2.0.md).
 
 ## Committed development changes through `c128035` — 2026-10-03
 
