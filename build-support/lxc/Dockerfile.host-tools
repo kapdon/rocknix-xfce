@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # Separate trusted host-side tools. Never bind this tree into writable Debian.
 # Bundled independently from the container-admin-writable application rootfs.
-FROM debian@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a
+FROM debian@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a AS host-runtime
 ARG TARGETARCH
 RUN test "${TARGETARCH}" = arm64
 ENV DEBIAN_FRONTEND=noninteractive
@@ -19,6 +19,8 @@ RUN apt-get update \
     && lxc-start --version > /host-tools-lxc-version \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+FROM host-runtime AS themed-host-tools
 
 # The isolated network editor cannot read container-admin-writable themes or
 # settings. Package the same source assets in its separate trusted runtime.

@@ -45,8 +45,8 @@ jobs:
           outputs: type=local,dest=build/fuzzel
           cache-from: type=gha,scope=rocknix-fuzzel-arm64
           cache-to: type=gha,scope=rocknix-fuzzel-arm64,mode=max
-      # Populate this builder from the cross-run cache. build-rootfs.sh uses
-      # the same builder, so its build/load reuses these layers locally.
+      # Materialize remote cache hits. Metadata-only cacheonly results may not
+      # survive the later build-rootfs.sh calls without their cache importer.
       - name: Cache ARM64 runtime layers
         uses: docker/build-push-action@v6
         with:
@@ -56,7 +56,7 @@ jobs:
           build-contexts: |
             trash-packages=./build/trash-packages
             fuzzel-artifacts=./build/fuzzel
-          outputs: type=cacheonly
+          load: true
           cache-from: type=gha,scope=rocknix-desktop-arm64
           cache-to: type=gha,scope=rocknix-desktop-arm64,mode=max
       - name: Cache trusted ARM64 host tools
@@ -65,7 +65,7 @@ jobs:
           context: .
           file: build-support/lxc/Dockerfile.host-tools
           platforms: linux/arm64
-          outputs: type=cacheonly
+          load: true
           cache-from: type=gha,scope=rocknix-host-tools-arm64
           cache-to: type=gha,scope=rocknix-host-tools-arm64,mode=max
       - name: Build ARM64 runtime

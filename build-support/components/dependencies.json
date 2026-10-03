@@ -1,0 +1,6 @@
+{
+  "format": 1,
+  "platform": "linux/arm64",
+  "debian_snapshot": "20261001T000000Z",
+  "runtime_abi": "debian13-arm64-lxc-v1"
+}

@@ -11,3 +11,6 @@
 !build-support/fuzzel/**
 !build-support/trash/check-packages.py
 !build-support/trash/install-image.py
+
+!build-support/components
+!build-support/components/**

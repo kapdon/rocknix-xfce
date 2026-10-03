@@ -1,0 +1,297 @@
+#!/usr/bin/python3
+"""Verify and assemble immutable Desktop components into the existing contract.
+
+No component is applied to a live installation here. Assembly is into a new
+staging directory; the existing install/updater owns device mutation and locks.
+"""
+import argparse
+import hashlib
+import io
+import json
+import os
+from pathlib import Path, PurePosixPath
+import re
+import runpy
+import shutil
+import subprocess
+import tarfile
+import tempfile
+
+FORMAT = 2
+ABI = 'debian13-arm64-lxc-v1'
+ROLES = ('guest-base', 'host-runtime', 'firefox-media', 'mpv-media', 'fuzzel',
+         'keyboard', 'guest-integration', 'host-integration', 'host-theme', 'trash-packages')
+PROFILES = {'install': tuple(x for x in ROLES if x != 'trash-packages'),
+            'update': tuple(x for x in ROLES if x != 'guest-base')}
+HEX = re.compile(r'[0-9a-f]{64}')
+TOP_FILES = {'install.sh', 'install-device.sh', 'uninstall.sh', 'upgrade.sh',
+             'upgrade-lxc.py', 'README.md'}
+
+
+def encoded(value):
+    return (json.dumps(value, sort_keys=True, separators=(',', ':')) + '\n').encode()
+
+
+def digest(path):
+    with Path(path).open('rb') as stream:
+        return hashlib.file_digest(stream, 'sha256').hexdigest()
+
+
+def safe_name(name):
+    path = PurePosixPath(name)
+    return bool(name and str(path) == name and not path.is_absolute() and
+                '..' not in path.parts and '\\' not in name and '\x00' not in name)
+
+
+def owns(role, name):
+    if role == 'guest-base':
+        return name == 'rootfs' or name.startswith('rootfs/')
+    if role == 'host-runtime':
+        return name == 'host-tools' or name.startswith('host-tools/')
+    if role == 'host-integration':
+        return name in TOP_FILES or name == 'payload' or name.startswith('payload/')
+    if role == 'trash-packages':
+        return name == 'payload/guest/trash-packages.tar'
+    if role == 'host-theme':
+        return (name == 'host-tools/etc/gtk-3.0/settings.ini' or
+                name.startswith('host-tools/usr/share/themes/ROCKNIX/'))
+    if role == 'guest-integration':
+        return name.startswith('rootfs/')
+    prefixes = {'firefox-media': ('rootfs/opt/ffmpeg-rpi-7.1.5/',),
+                'mpv-media': ('rootfs/opt/rocknix-mpv/',),
+                'fuzzel': ('rootfs/opt/rocknix-fuzzel/',),
+                'keyboard': ('rootfs/usr/local/bin/wvkbd-rocknix', 'rootfs/usr/local/share/wvkbd/')}
+    return any(name == p.rstrip('/') or name.startswith(p) if p.endswith('/') else name == p
+               for p in prefixes.get(role, ()))
+
+
+def descriptor(spec, role=None, key=None):
+    if not isinstance(spec, dict) or spec.get('format') != 1 or spec.get('id') not in ROLES:
+        raise RuntimeError('invalid component descriptor')
+    if role is not None and spec['id'] != role or key is not None and spec['input_key'] != key:
+        raise RuntimeError('component input binding mismatch')
+    for name in ('input_key', 'sha256'):
+        if not isinstance(spec.get(name), str) or not HEX.fullmatch(spec[name]):
+            raise RuntimeError('invalid component digest')
+    if spec.get('asset') != spec['sha256'] + '.tar.xz':
+        raise RuntimeError('invalid immutable asset name')
+    if spec.get('store_tag') != 'components-v1-' + spec['input_key'][:3]:
+        raise RuntimeError('invalid component store')
+    for field in ('size', 'unpacked_size'):
+        if type(spec.get(field)) is not int or not 0 <= spec[field] <= 16 * 1024**3:
+            raise RuntimeError('invalid component size')
+    if spec['size'] >= 2 * 1024**3:
+        raise RuntimeError('component exceeds release asset limit')
+    if not isinstance(spec.get('managed'), dict):
+        raise RuntimeError('missing managed inventory')
+    for name, fp in spec['managed'].items():
+        if not safe_name(name) or not owns(spec['id'], 'rootfs/' + name):
+            raise RuntimeError('invalid component inventory path')
+        if not isinstance(fp, dict) or not (
+                set(fp) == {'sha256', 'mode'} and isinstance(fp['sha256'], str) and
+                HEX.fullmatch(fp['sha256']) and type(fp['mode']) is int and 0 <= fp['mode'] < 0o1000 or
+                set(fp) == {'link'} and isinstance(fp['link'], str) and safe_name(fp['link'])):
+            raise RuntimeError('invalid managed fingerprint')
+    return spec
+
+
+def release(value):
+    if (value.get('format') != FORMAT or value.get('platform') != 'linux/arm64' or
+            value.get('runtime_abi') != ABI or value.get('minimum_installer') != 2 or
+            not re.fullmatch('[0-9a-f]{40}', value.get('commit', '')) or
+            not re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z', value.get('built_at', ''))):
+        raise RuntimeError('unsupported component release')
+    if set(value.get('components', {})) != set(ROLES):
+        raise RuntimeError('incomplete component release')
+    seen = set()
+    for role, spec in value['components'].items():
+        descriptor(spec, role)
+        if seen & spec['managed'].keys():
+            raise RuntimeError('components claim the same managed path')
+        seen.update(spec['managed'])
+    return value
+
+
+def fetch(repository, tag, asset, target, expected=None, size=None):
+    if not re.fullmatch('[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', repository):
+        raise RuntimeError('invalid repository')
+    if not re.fullmatch('[A-Za-z0-9_.-]+', tag) or not re.fullmatch('[A-Za-z0-9_.-]+', asset):
+        raise RuntimeError('invalid asset location')
+    target = Path(target)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if target.exists() and expected and target.stat().st_size == size and digest(target) == expected:
+        return target
+    fd, name = tempfile.mkstemp(prefix='.download-', dir=target.parent)
+    os.close(fd)
+    temporary = Path(name)
+    try:
+        subprocess.run(['curl', '--fail', '--location', '--proto', '=https', '--proto-redir', '=https',
+                        '--retry', '3', '--max-time', '1800',
+                        f'https://github.com/{repository}/releases/download/{tag}/{asset}',
+                        '-o', str(temporary)], check=True)
+        if expected and (temporary.stat().st_size != size or digest(temporary) != expected):
+            raise RuntimeError('component download integrity mismatch')
+        temporary.replace(target)
+    finally:
+        temporary.unlink(missing_ok=True)
+    return target
+
+
+def materialize(value, cache, repository, profile):
+    release(value)
+    cache = Path(cache)
+    return {role: fetch(repository, spec['store_tag'], spec['asset'], cache / spec['asset'],
+                        spec['sha256'], spec['size'])
+            for role in PROFILES[profile] for spec in (value['components'][role],)}
+
+
+def validate_archives(value, files, profile):
+    """Validate the whole composition before extraction, including cross-archive links."""
+    release(value)
+    if set(files) != set(PROFILES[profile]):
+        raise RuntimeError('incomplete assembly profile')
+    names, links, hardlinks = {}, set(), []
+    total = 0
+    for role in PROFILES[profile]:
+        spec, path = value['components'][role], Path(files[role])
+        if path.is_symlink() or path.stat().st_size != spec['size'] or digest(path) != spec['sha256']:
+            raise RuntimeError('component checksum mismatch: ' + role)
+        size, inventory, component_seen, regular, local_links = 0, {}, set(), set(), []
+        with tarfile.open(path, 'r:xz') as archive:
+            for item in archive:
+                name = item.name
+                if not safe_name(name) or name in component_seen:
+                    raise RuntimeError('unsafe/duplicate component path: ' + name)
+                component_seen.add(name)
+                if not (item.isfile() or item.isdir() or item.issym() or item.islnk()):
+                    raise RuntimeError('special component member: ' + name)
+                # Shared parent directories carry no payload; the first component
+                # supplies their metadata. Never allow another component to own a file.
+                if not item.isdir() and not owns(role, name):
+                    raise RuntimeError('component outside its role: ' + name)
+                if name in names and not (item.isdir() and names[name] == 'dir'):
+                    raise RuntimeError('component path collision: ' + name)
+                names[name] = 'dir' if item.isdir() else ('file' if item.isfile() else 'link')
+                if item.isfile():
+                    regular.add(name)
+                if item.isdir():
+                    root = 'payload' if role in ('host-integration', 'trash-packages') else (
+                        'host-tools' if role in ('host-runtime', 'host-theme') else 'rootfs')
+                    if name != root and not name.startswith(root + '/'):
+                        raise RuntimeError('component directory outside its root')
+                if item.uid < 0 or item.gid < 0 or item.uid >= 65536 or item.gid >= 65536:
+                    raise RuntimeError('unmappable component ownership')
+                if item.issym() or item.islnk():
+                    if role not in ('guest-base', 'host-runtime') and not name.startswith('rootfs/'):
+                        raise RuntimeError('links are forbidden in host integration payloads')
+                    links.add(name)
+                    if item.islnk():
+                        if not safe_name(item.linkname) or not owns(role, item.linkname):
+                            raise RuntimeError('unsafe component hardlink')
+                        hardlinks.append((name, item.linkname))
+                        local_links.append(item.linkname)
+                    elif not item.linkname or '\x00' in item.linkname:
+                        raise RuntimeError('empty component symlink')
+                size += item.size if item.isfile() else 0
+                guest = name.removeprefix('rootfs/')
+                if name.startswith('rootfs/') and guest in spec['managed']:
+                    if item.issym():
+                        fp = {'link': item.linkname}
+                    elif item.isfile():
+                        fp = {'sha256': hashlib.file_digest(archive.extractfile(item), 'sha256').hexdigest(),
+                              'mode': item.mode}
+                    else:
+                        raise RuntimeError('managed hardlinks/special files are not supported')
+                    inventory[guest] = fp
+        if any(target not in regular for target in local_links):
+            raise RuntimeError('hardlink crosses component boundary')
+        if inventory != spec['managed'] or size != spec['unpacked_size']:
+            raise RuntimeError('component inventory/size mismatch: ' + role)
+        total += size
+    for name in names:
+        if any(str(p) in links for p in PurePosixPath(name).parents):
+            raise RuntimeError('component writes through a link: ' + name)
+    if any(names.get(target) != 'file' for _, target in hardlinks):
+        raise RuntimeError('component hardlink target missing')
+    return total
+
+
+def assemble(value, files, target, profile):
+    target = Path(target)
+    if os.geteuid() != 0:
+        raise RuntimeError('assembly requires root or one fakeroot session to preserve ownership')
+    if target.exists() or target.is_symlink():
+        raise RuntimeError('assembly destination must be new')
+    target.parent.mkdir(parents=True, exist_ok=True)
+    total = validate_archives(value, files, profile)
+    if shutil.disk_usage(target.parent).free < total + 256 * 1024**2:
+        raise RuntimeError('insufficient assembly space')
+    temporary = Path(tempfile.mkdtemp(prefix='.components-', dir=target.parent))
+    try:
+        directories = set()
+        for role in PROFILES[profile]:
+            with tarfile.open(files[role], 'r:xz') as archive:
+                selected = []
+                for item in archive:
+                    if item.isdir():
+                        if item.name in directories:
+                            continue
+                        directories.add(item.name)
+                    selected.append(item)
+                archive.extractall(temporary, members=selected, filter='fully_trusted')
+        info = (f"built={value['built_at']}\narchitecture=arm64\ncommit={value['commit']}\n"
+                f"release_format=2\nruntime_abi={ABI}\n").encode()
+        (temporary / 'build-info').write_bytes(info)
+        (temporary / 'build-info').chmod(0o644)
+        root = temporary / 'rootfs'
+        (root / 'etc').mkdir(parents=True, exist_ok=True)
+        (root / 'etc/rocknix-desktop-build-info').write_bytes(info)
+        (root / 'etc/rocknix-desktop-build-info').chmod(0o644)
+        api = runpy.run_path(str(temporary / 'payload/guest/rocknix-container-update'))
+        inventory = {}
+        for spec in value['components'].values():
+            inventory.update(spec['managed'])
+        inventory['etc/rocknix-desktop-build-info'] = {'sha256': hashlib.sha256(info).hexdigest(), 'mode': 0o644}
+        if not all(api['allowed'](name) for name in inventory):
+            raise RuntimeError('component inventory outside managed guest namespace')
+        manifest = {'format': 1, 'files': inventory}
+        # One complete union: applying components one at a time with the old
+        # updater would accidentally delete files owned by unchanged components.
+        with tarfile.open(temporary / 'desktop-integration.tar.gz', 'w:gz') as archive:
+            for name, expected in sorted(inventory.items()):
+                path = root / name
+                if api['fingerprint'](path) != expected:
+                    raise RuntimeError('assembled managed inventory mismatch: ' + name)
+                archive.inodes.clear()
+                member = archive.gettarinfo(str(path), arcname=name)
+                member.uid = member.gid = 0
+                member.uname = member.gname = ''
+                with path.open('rb') if member.isfile() else io.BytesIO() as stream:
+                    archive.addfile(member, stream if member.isfile() else None)
+            data = encoded(manifest)
+            item = tarfile.TarInfo('manifest.json'); item.size = len(data); item.mode = 0o644
+            archive.addfile(item, io.BytesIO(data))
+        state = root / api['STATE']; state.parent.mkdir(parents=True, exist_ok=True); state.write_bytes(data); state.chmod(0o644)
+        (temporary / 'components.json').write_bytes(encoded(value))
+        temporary.rename(target)
+    finally:
+        if temporary.exists():
+            shutil.rmtree(temporary)
+    return target
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--manifest', required=True, type=Path)
+    parser.add_argument('--repository', default='kapdon/rocknix-desktop')
+    parser.add_argument('--cache', required=True, type=Path)
+    parser.add_argument('--profile', choices=PROFILES, required=True)
+    parser.add_argument('--output', required=True, type=Path)
+    args = parser.parse_args()
+    value = release(json.loads(args.manifest.read_text()))
+    files = materialize(value, args.cache, args.repository, args.profile)
+    assemble(value, files, args.output, args.profile)
+
+
+if __name__ == '__main__':
+    main()

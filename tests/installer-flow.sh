@@ -145,3 +145,58 @@ for asset in "../escape.tar.xz" "rocknix-desktop-rp6-arm64-$candidate-r123a2.tar
   test "$(cat "$FLOW_LOG")" = "$actions_before"
 done
 printf 'PASS: rebuilt rolling artifacts update; unsafe/unsupported filenames refused before bundle download\n'
+
+# Format 2 resolves the non-base probe/update profile first, and fetches the
+# base only after Install is selected and confirmed. Exercise real dispatch and
+# bootstrap integrity with a fixture assembler; archive composition is tested
+# independently by components.py.
+export COMPONENT_FIXTURE="$scratch/bundle"
+cat >"$scratch/bootstrap.py" <<'PY'
+import argparse, os, shutil
+p = argparse.ArgumentParser()
+for name in ('manifest', 'repository', 'cache', 'profile', 'output'):
+    p.add_argument('--' + name)
+a = p.parse_args()
+with open(os.environ['FLOW_LOG'], 'a') as log:
+    log.write('profile:' + a.profile + '\n')
+shutil.copytree(os.environ['COMPONENT_FIXTURE'], a.output)
+PY
+printf '{"format":2,"commit":"%s"}\n' "$candidate" >"$scratch/manifest.json"
+manifest_sha=$(sha256sum "$scratch/manifest.json"); manifest_sha=${manifest_sha%% *}
+bootstrap_sha=$(sha256sum "$scratch/bootstrap.py"); bootstrap_sha=${bootstrap_sha%% *}
+jq -n --arg commit "$candidate" --arg sha "$manifest_sha" --arg helper "$bootstrap_sha" \
+  --argjson size "$(wc -c <"$scratch/bootstrap.py")" \
+  '{format:2,commit:$commit,sha256:$sha,asset:("rocknix-desktop-components-"+$commit+"-"+$sha+".json"),
+    bootstrap:{asset:("rocknix-components-"+$helper+".py"),sha256:$helper,size:$size}}' >"$scratch/latest.json"
+curl() {
+  local url='' destination=''
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      https://*) url=$1; shift ;;
+      -o) destination=$2; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+  case "$url" in
+    */latest.json) cp "$scratch/latest.json" "$destination" ;;
+    */rocknix-desktop-components-*.json) cp "$scratch/manifest.json" "$destination" ;;
+    */rocknix-components-*.py) cp "$scratch/bootstrap.py" "$destination" ;;
+    *) return 1 ;;
+  esac
+}
+fixture_status=healthy; fixture_revision=$previous
+: >"$FLOW_LOG"
+output=$(main --dev --yes)
+test "$(cat "$FLOW_LOG")" = $'profile:update\nupdate'
+fixture_status=absent; fixture_revision=''
+: >"$FLOW_LOG"
+output=$(main --dev <<<n)
+test "$(cat "$FLOW_LOG")" = 'profile:update'
+: >"$FLOW_LOG"
+output=$(main --dev --yes)
+test "$(cat "$FLOW_LOG")" = $'profile:update\nprofile:install\ninstall'
+: >"$FLOW_LOG"
+printf '# changed after signing\n' >>"$scratch/bootstrap.py"
+if (main --dev --yes) >/dev/null 2>&1; then exit 1; fi
+test ! -s "$FLOW_LOG"
+printf 'PASS: component manifests dispatch Update without base; Install waits for consent; bootstrap corruption stops execution\n'

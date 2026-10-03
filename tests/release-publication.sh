@@ -8,6 +8,7 @@ mkdir -p "$scratch/repo/scripts" "$scratch/repo/dist" "$scratch/bin"
 cp scripts/publish-release.sh "$scratch/repo/scripts/"
 cp scripts/publish-development.sh scripts/development-release-notes.py "$scratch/repo/scripts/"
 cp scripts/prune-development-assets.sh "$scratch/repo/scripts/"
+cp CHANGELOG.md "$scratch/repo/"
 printf 'dist/\n' >"$scratch/repo/.gitignore"
 git init -q --initial-branch=dev "$scratch/repo"
 git -C "$scratch/repo" config user.name 'Release fixture'
@@ -90,8 +91,8 @@ for attempt in 1 2; do
   test -f "$scratch/repo/dist/rocknix-desktop-rp6-arm64-$revision-r123a$attempt.tar.xz"
 done
 grep -qF "compare/v0.1.0...$revision?per_page=100 --paginate --slurp" "$PUBLISH_LOG"
-grep -qF 'fix: first change' "$scratch/repo/dist/development-notes.md"
-grep -qF 'fix: second change' "$scratch/repo/dist/development-notes.md"
+grep -qF '[Full changelog](https://github.com/kapdon/rocknix-desktop/blob/dev/CHANGELOG.md)' "$scratch/repo/dist/development-notes.md"
+if grep -Eq 'fix: (first|second) change' "$scratch/repo/dist/development-notes.md"; then exit 1; fi
 grep -qF -- '--notes-file dist/development-notes.md' "$PUBLISH_LOG"
 grep -q '/releases/assets/4 --method DELETE' "$PUBLISH_LOG"
 grep -q '/releases/assets/5 --method DELETE' "$PUBLISH_LOG"

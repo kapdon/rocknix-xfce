@@ -1,5 +1,9 @@
 # Building ROCKNIX Desktop
 
+Development CI uses the [component build path](components.md), resolving reusable
+compressed artifacts before Docker setup. The commands below also retain the
+explicit monolithic/offline builder used by stable releases.
+
 Build from a clean, committed checkout with Docker Buildx and `fakeroot` for
 non-root archive packaging. Local AMD64 hosts can build the ARM64 target.
 The private Firefox FFmpeg and keyboard builds use an ARM64 cross-compiler
@@ -58,10 +62,10 @@ Keep the existing artifact and source checks. Run GLib tests when changing
 its mount-aware source patch. Test affected runtime behavior
 on the RP6 using the local bundle.
 
-Docker and CI reuse BuildKit layers. Both publication workflows restore/export
+The offline/stable builder also reuses BuildKit layers. The stable workflow restores/exports
 separate ARM64 caches for Trash packages, Fuzzel, the runtime and trusted host
 tools. The packaging build uses the same builder. Runtime package installation
-and compiled dependencies live in `desktop-dependencies`, before the final
+and compiled dependencies live before the final
 overlay stage. Changing a launcher, theme or adding overlay files reuses APT,
 audited Trash packages, Fuzzel, keyboard and both codec dependency layers.
 Changing dependency recipes, patches or package artifacts invalidates their
@@ -81,13 +85,22 @@ security packages. Refresh dependencies deliberately with a fresh builder or
 no-cache build using the same inputs, then validate locally and on hardware.
 A cache miss performs a full build; cache availability is not a requirement.
 
-The manually dispatched [Development bundle workflow](../.github/workflows/development.yml)
-builds the release bundle. Preserve the bundle/checksum, build logs and source
-metadata; cached checks must identify their original execution rather than
-claim a new run. Verify bundle checksum and
-embedded source/image provenance before RP6 testing. Rolling publication is
+The manually dispatched [Development components workflow](../.github/workflows/development.yml)
+publishes reusable components and a rolling manifest. Each successful publication
+summarizes the release highlights and links to the full changes since the latest
+stable release in [CHANGELOG.md](../CHANGELOG.md). Benchmark runs publish only reusable
+artifacts. Preserve the manifest, build logs and source metadata; cached checks
+must identify their original execution rather than claim a new run. Verify
+artifact checksums and source/image provenance before RP6 testing. Rolling publication is
 restricted to `dev`; [versioned publication](../.github/workflows/release.yml)
 also requires the exact current `dev` commit.
 
 See [contributing and publication](../contributor.md). Local checks/builds do
 not prove device behavior or GitHub delivery.
+
+Remote-cache preparation loads the runtime and host-tools images into Docker.
+A metadata-only cache hit can otherwise leave layers remote and unavailable to
+later build calls that have no cache importer. Trash installation consumes a
+stage containing only audited packages, source artifacts, checksums and build
+logs; per-run exporter provenance remains in the original artifact directory
+and does not invalidate installation. Archive compression settings are unchanged.
