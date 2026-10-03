@@ -234,3 +234,23 @@ Wine environment and existing fullscreen preference were retained. RP6 was left
 with that game open. The installed local receipt identifies the tested candidate;
 subsequent documentation-only commits do not alter those runtime bytes. No push
 or hosted build was triggered.
+
+
+### Correction: actual PD2 windowed acceptance
+
+The preceding fullscreen smoke test was not validation of the reported windowed
+bug. A subsequent windowed-only pass on the same runtime reproduced cropping at
+1920x953 with D2GL configured for 1920x1080. Selecting Custom Size 1920x953 in the
+real game produced a complete picture and an accurately hit bottom-edge button,
+but keyboard-driven resizing to 1920x575 cropped it again. The Wine fullscreen-
+hack override alone did not fix the windowed game. Original configuration bytes
+were restored; no per-game workaround was deployed.
+
+A self-built Windows test window under the same runner/prefix received matching
+WM_SIZE/GetClientRect values for 953, 575 and restored 953, and rendered from
+those accepted dimensions. The [updated handoff](PD2_WINDOWED_SIZE_HANDOFF.md)
+records the real-game menu, source-backed renderer diagnosis, diagnostic caveats
+and required resize-event fix. PD2 automatic windowed fitting and physical touch
+acceptance remain open; the work-area implementation must not be described as
+solving them. No runtime rebuild, push or hosted build was performed for this
+follow-up.

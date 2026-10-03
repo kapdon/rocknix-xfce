@@ -1,6 +1,100 @@
 # PD2 windowed-mode size: handoff to LXC
 
-## LXC response and installed fixes — 2026-10-03
+## Windowed-only follow-up — 2026-10-03
+
+**The reported PD2 windowed bug remains unresolved.** The previous fullscreen
+smoke test was not acceptance for this issue. This follow-up tested the actual
+windowed game on the same installed LXC candidate, with no new runtime changes.
+
+### Actual device results
+
+| Windowed case | Sway / X11 client | Render / interaction |
+| --- | --- | --- |
+| Launcher's Play, stored 1920x1080 | 1920x953, Sway y=47, fullscreen=0 | Top 127 pixels cropped; publishing work-area metadata did not fix it |
+| D2GL menu: Custom Size 1920x953, normal Wine environment | 1920x953 | Complete picture; click on visible bottom-left Exit hit the correct button and returned to the main menu |
+| Same 953 configuration, on-screen keyboard opened | 1920x575 | Image cropped again instead of resizing; hiding keyboard restored the complete 953 picture |
+| Standalone diagnostic, stored 1920x1080 and `WINE_DISABLE_FULLSCREEN_HACK=1` | 1920x953, fullscreen=0 | Still cropped; the flag alone is not a PD2 windowed fix |
+
+The D2GL 1.3.3 menu was opened and inspected in the real game. Its list contains
+Custom Size and fixed presets, including 1920x1080; it did **not** gain a
+1920x953 entry. Selecting Custom Size and entering 953 was a reversible
+experiment, not a shipped game-specific workaround. All original configuration
+bytes were restored after testing, including `window_fullscreen: false` and
+1920x1080. No permanent Wine environment override was added. Physical touch
+was not tested; the button check used Sway-injected pointer input.
+
+The standalone Wine-flag diagnostic reused the captured game environment, with
+the launcher-owned WINEPREFIX descriptor replaced by its existing canonical
+path. Its inherited cache descriptor was unavailable and generated a cache
+warning; audio warnings also occurred. This run establishes visible cropping
+with the flag present in the actual game process, not audio/performance parity
+with Play. A Windows launcher update dialog appeared during testing; it was
+terminated without accepting the update. Diagnostic game processes were closed.
+The native PD2 Launcher and Desktop remain available.
+
+### Wine receives the actual tiled client size
+
+A self-built 32-bit Windows test window ran under the **same Wine-GE 8-26 runner,
+FEX and PD2 prefix**, without disabling the fullscreen hack. It used a fixed-size
+window style, then was explicitly tiled to match PD2's layout. A normal Windows
+message loop recorded:
+
+```text
+WM_SIZE 1920 953  CLIENT 1920 953
+REQUEST 1920x1080
+WM_SIZE 1914 1055  CLIENT 1914 1055
+WM_SIZE 1920 953  CLIENT 1920 953
+WM_SIZE 1920 575  CLIENT 1920 575
+WM_SIZE 1920 953  CLIENT 1920 953
+```
+
+The transient requested client size was followed by the compositor's accepted
+size. Its paint routine used GetClientRect; all four painted corner markers
+fit the 953 client, and the log confirmed keyboard resize/restore delivery.
+This verifies real Wine window resizing, beyond the previous non-Wine X11 test.
+It does not show that D2GL updates its own renderer when those events arrive.
+
+**1920x953 is the correct target for this tiled game.** The desktop-wide EWMH
+work rectangle (1920x1000) excludes the bottom panel; the actual tile also loses
+47 pixels to Sway's tabs. Applications that want to fit the tile must use the
+accepted client dimensions. Neither the physical monitor size nor a desktop-wide
+work-area query substitutes for GetClientRect after an actual resize.
+
+### Source evidence and required renderer fix
+
+Inspected Project-Diablo-2/D2GL commit
+`ab34011f5e9979d56046506833c9cd254c7c3c97`. This is a source reference, not a
+bit-for-bit provenance claim for the installed DLL:
+
+- [config.cpp](https://github.com/Project-Diablo-2/D2GL/blob/ab34011f5e9979d56046506833c9cd254c7c3c97/d2gl/src/option/config.cpp):
+  GetSystemMetrics(SM_CXVIRTUALSCREEN/SM_CYVIRTUALSCREEN) provides size limits;
+  the menu uses a fixed preset table plus Custom Size. It does not query work area.
+- [win32.cpp](https://github.com/Project-Diablo-2/D2GL/blob/ab34011f5e9979d56046506833c9cd254c7c3c97/d2gl/src/win32.cpp):
+  setWindowRect uses rcMonitor even when windowed; setWindowMetrics derives
+  viewport and cursor transforms from App.window.size. WndProc has no WM_SIZE
+  handling that updates that renderer size. windowResize recalculates metrics,
+  queues render-buffer resizing and refreshes cursor confinement, but is called
+  from explicit option/fullscreen changes, not ordinary window resize events.
+
+The PD2/D2GL owner should implement response to accepted **windowed client**
+resizes: read GetClientRect on WM_SIZE (or the appropriate post-layout event),
+update the runtime render dimensions and viewport/input transforms, and schedule
+resize through the existing renderer path. Guard initialization, minimization
+and zero-sized clients, and avoid issuing another SetWindowPos from that handler.
+Keep the user's preferred size separate from the compositor-accepted size so
+keyboard/layout changes do not permanently rewrite their preferences. Monitor
+work area can constrain initial placement; it cannot handle later tile changes.
+
+Required acceptance: ordinary Play in windowed mode, no manual 953 seed; complete
+picture and matching hit targets at 1920x953; keyboard resize/restore or another
+layout change updates rendering and input; menu changes and reopen remain sound.
+Keep a fullscreen regression check secondary. If a launcher-only fallback is
+chosen instead of a renderer fix, explicitly state that one-time size seeding
+does not solve dynamic resizing. No launcher or D2GL source was edited here.
+
+---
+
+## Earlier LXC response and installed fixes — 2026-10-03
 
 This response supersedes the original handoff's assumption that publishing
 `_NET_WORKAREA` alone will make this Wine runner report the usable area. The
@@ -39,7 +133,7 @@ window layout/decorations. Publishing the current tile as the global desktop
 work area would conflate those concepts and fail for other layouts.
 See [EWMH work-area semantics](https://specifications.freedesktop.org/wm/1.5/ar01s03.html).
 
-### Confirmed Wine-GE blocker; launcher agent owns the next decision
+### Separate Wine-GE work-area override; not the PD2 resize fix
 
 With the installed LXC properties present, a 32-bit Windows probe in the existing
 PD2 prefix produced:
@@ -69,7 +163,8 @@ API behavior only. Ensure the intended environment reaches Wine itself and any
 new Wine desktop/server processes, rather than relying on a GUI launcher to
 forward arbitrary variables.
 
-Then retest D2GL's offered size list and rendering/hit targets. Work-area metadata
+The windowed-only follow-up above now supplies that missing real-game test.
+The flag alone did not fix PD2 cropping. For other work-area consumers: Work-area metadata
 is not an XRandR display mode and need not automatically appear in a mode list.
 Even 1920x1000 is not a guarantee of a 1920x1000 *client* in tabbed mode: account
 for decorations or use a suitable generic fixed-size window policy. No game-

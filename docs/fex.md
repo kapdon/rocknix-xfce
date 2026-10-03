@@ -59,8 +59,11 @@ into X11 pixels. It does not expose the host Sway control socket to the guest.
 Wine runners can override that information. In particular, the tested Wine-GE
 8-26 fullscreen-hack handler replaces the work rectangle with the full monitor.
 See the [windowed-mode investigation](PD2_WINDOWED_SIZE_HANDOFF.md) for the
-verified API behavior and launcher-owned follow-up; Desktop does not globally
-change Wine fullscreen policy.
+verified API behavior and windowed-game tests. That flag alone does not fix
+PD2: its renderer retains its configured size instead of following the accepted
+client size. A real Wine test window receives 1920x953, keyboard-reduced 1920x575,
+and restored 1920x953 through WM_SIZE/GetClientRect. Desktop does not globally
+change Wine fullscreen policy or overwrite game preferences.
 
 ## Compatibility limits
 
