@@ -195,3 +195,42 @@ that user check. Normal and crash ACL restoration are covered by the existing
 lease fixtures, but this candidate's new event-device grant has not yet been
 requalified through a live Desktop shutdown/crash cycle. No push or hosted build
 was triggered; the installed receipt records this exact local candidate.
+
+
+## X11 work area and fullscreen state follow-up — 2026-10-03
+
+Installed candidate `2a094d9944b337138956d528e6d58d750a54726a`, manifest SHA-256
+`2eba8442439cf315e30c728d0337abfa091001ddcd5e6c21574eaf1e1ae51050`, passed
+full project checks, a clean local component build and home-preserving RP6
+replacement. The audited local Trash override still prevents release qualification.
+The exact PD2 Launcher package was preserved, along with game/prefix data and
+mixed-owner home metadata. Temporary preservation fixtures were removed.
+
+The installed generic work-area publisher reported 1920x1000, changed to
+1920x622 with the normal keyboard visible, and returned to 1920x1000 when hidden.
+The installed boundary audit passed. Normal Desktop exit restored the exact
+previous virtual-gamepad ACL, removed work-area state and restored EmulationStation;
+normal reentry republished the properties. This closes the previous candidate's
+normal-exit ACL validation gap. Crash cleanup remains fixture-qualified only.
+
+A live X11 probe verified tiled 1920x953 resize constraints, floating 900x700,
+fullscreen 1920x1080, and return to tiled. An injected stale fullscreen flag was
+cleared on a non-fullscreen configure; real fullscreen set it again. Four focused
+ARM64 satellite tests passed: `fullscreen`, `fullscreen_heuristic`,
+`reconcile_stale_x11_fullscreen_state`, and `compositor_constrained_resize_state`.
+No unchanged upstream full suite was run.
+
+Wine-GE 8-26 reads the correct work area but its fullscreen-hack monitor handler
+replaces it with the full monitor bounds. In the existing prefix, both Windows
+work-area APIs reported 1920x1080 normally and 1920x1000 with diagnostic-only
+`WINE_DISABLE_FULLSCREEN_HACK=1`. That override was not persisted. The
+[windowed-mode handoff](PD2_WINDOWED_SIZE_HANDOFF.md) records matching upstream
+source and the launcher-owned follow-up. D2GL size-list behavior, windowed touch
+alignment and physical controller gameplay remain unqualified.
+
+After normal Desktop restart, PD2 launched through Play to the login screen with
+a complete fullscreen picture and matching 1920x1080 Sway/X11 bounds. The normal
+Wine environment and existing fullscreen preference were retained. RP6 was left
+with that game open. The installed local receipt identifies the tested candidate;
+subsequent documentation-only commits do not alter those runtime bytes. No push
+or hosted build was triggered.

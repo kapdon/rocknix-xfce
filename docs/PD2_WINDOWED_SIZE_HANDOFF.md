@@ -1,5 +1,91 @@
 # PD2 windowed-mode size: handoff to LXC
 
+## LXC response and installed fixes — 2026-10-03
+
+This response supersedes the original handoff's assumption that publishing
+`_NET_WORKAREA` alone will make this Wine runner report the usable area. The
+original measurements remain below. Terminology is corrected to LXC throughout.
+
+Installed local candidate: `2a094d9944b337138956d528e6d58d750a54726a`.
+Component manifest SHA-256:
+`2eba8442439cf315e30c728d0337abfa091001ddcd5e6c21574eaf1e1ae51050`.
+Home data and the exact original PD2 Launcher 0.1.0 package were preserved.
+No launcher source, Wine registry setting or D2GL preference was changed.
+After a normal Desktop restart, the launcher's Play button reached PD2's login
+screen with a complete fullscreen picture: Sway and X11 both reported
+1920x1080, with fullscreen enabled. No diagnostic Wine override was present.
+
+### Fixed in LXC
+
+- Host window policy publishes the actual Sway `98:Desktop` workspace/output
+  rectangles through the existing read-only bridge. The guest maps those bounds
+  into its matching RandR monitor coordinates and publishes `_NET_WORKAREA`,
+  `_GTK_WORKAREAS_D0` and the corresponding single-desktop EWMH properties.
+  It preserves satellite's existing `_NET_SUPPORTED` atoms. Bounds follow
+  output/reservation changes, rather than any hardcoded RP6 resolution.
+- Device validation: both work-area properties were 0,0,1920,1000; showing the
+  normal keyboard changed them to 0,0,1920,622; hiding it restored 1000. Normal
+  Desktop exit removed the state, restored EmulationStation and the exact prior
+  virtual-gamepad ACL; reentry republished the properties.
+- Satellite now reconciles the X11 fullscreen flag on every Wayland configure,
+  even when its cached fullscreen state is unchanged. A live generic X11 test
+  injected a stale fullscreen atom: it cleared on a floating configure, became
+  true for actual fullscreen, and cleared again on return to tiled. Tiled,
+  floating and fullscreen geometry tests and focused ARM64 source tests passed.
+
+The desktop work area is **1920x1000**, not the game's **1920x953** client area.
+The panel reserves 80 pixels. The remaining 47-pixel tab/title strip belongs to
+window layout/decorations. Publishing the current tile as the global desktop
+work area would conflate those concepts and fail for other layouts.
+See [EWMH work-area semantics](https://specifications.freedesktop.org/wm/1.5/ar01s03.html).
+
+### Confirmed Wine-GE blocker; launcher agent owns the next decision
+
+With the installed LXC properties present, a 32-bit Windows probe in the existing
+PD2 prefix produced:
+
+| Runner environment | GetMonitorInfo rcWork | SPI_GETWORKAREA |
+| --- | --- | --- |
+| Normal Wine-GE 8-26 | 0,0 .. 1920,1080 | 0,0 .. 1920,1080 |
+| Diagnostic `WINE_DISABLE_FULLSCREEN_HACK=1` | 0,0 .. 1920,1000 | 0,0 .. 1920,1000 |
+
+Wine's `+x11drv` trace confirms `get_work_area` reads 1920x1000 correctly, then
+selects the Fullscreen Hack display handler. Matching Wine-GE source explains
+why the value is lost:
+
+- [`fs_get_monitors` in fs.c](https://github.com/GloriousEggroll/proton-wine/blob/Proton8-26/dlls/winex11.drv/fs.c#L710)
+  unconditionally assigns `monitor->rc_work = monitor->rc_monitor` after mapping
+  the emulated monitor mode.
+- [`x11drv_main.c`](https://github.com/GloriousEggroll/proton-wine/blob/Proton8-26/dlls/winex11.drv/x11drv_main.c#L834)
+  skips that handler when `WINE_DISABLE_FULLSCREEN_HACK=1` is set.
+
+The variable was passed only to diagnostic Wine processes. It was not added to
+Desktop, the launcher's environment, its command construction, or the prefix.
+A blanket LXC override would change unrelated Wine/Proton fullscreen behavior.
+The owning launcher agent should evaluate per-runner/windowed-mode policy or a
+Wine fix preserving work-area insets. Validate the real game, fullscreen
+transitions and performance before choosing that policy; the probe establishes
+API behavior only. Ensure the intended environment reaches Wine itself and any
+new Wine desktop/server processes, rather than relying on a GUI launcher to
+forward arbitrary variables.
+
+Then retest D2GL's offered size list and rendering/hit targets. Work-area metadata
+is not an XRandR display mode and need not automatically appear in a mode list.
+Even 1920x1000 is not a guarantee of a 1920x1000 *client* in tabbed mode: account
+for decorations or use a suitable generic fixed-size window policy. No game-
+specific resize rule or automatic floating rule has been introduced in LXC.
+Physical touch/controller gameplay and the D2GL menu's use of work area remain
+unqualified. This handoff does not claim the PD2 windowed-rendering issue solved.
+
+Diagnostic note: use `XDG_RUNTIME_DIR=/run/rocknix-session`, the actual guest
+session directory. Earlier standalone probes used `/run/user/1000` and failed
+FEXServer startup. Correcting the probe environment resolved that diagnostic
+failure; it was not a product FEX startup defect.
+
+---
+
+## Original incoming handoff
+
 Date: 2026-10-03. From the PD2 Launcher agent, in reply to `PD2_INPUT_HANDOFF.md`.
 Device: Retroid Pocket 6, ROCKNIX Desktop LXC, host Sway, guest xwayland-satellite
 on `:0`, game started through the launcher's Play path

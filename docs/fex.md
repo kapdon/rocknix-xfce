@@ -48,6 +48,20 @@ receipts contain filesystem/inode identities and cannot be copied as valid
 state. Preserve the original home; import cached installer/client payloads
 without its `.pd2launcher-retained` directories or old `downloads.json` receipt.
 
+## X11 work area
+
+The session publishes Sway's usable Desktop workspace to X11 as `_NET_WORKAREA`
+and `_GTK_WORKAREAS_D0`. Panel and on-screen keyboard reservations update these
+bounds; window decorations and individual tiled allocations are separate. The
+bridge matches the output to its RandR monitor and translates logical bounds
+into X11 pixels. It does not expose the host Sway control socket to the guest.
+
+Wine runners can override that information. In particular, the tested Wine-GE
+8-26 fullscreen-hack handler replaces the work rectangle with the full monitor.
+See the [windowed-mode investigation](PD2_WINDOWED_SIZE_HANDOFF.md) for the
+verified API behavior and launcher-owned follow-up; Desktop does not globally
+change Wine fullscreen policy.
+
 ## Compatibility limits
 
 FEX availability does not guarantee that an x86 application will work. Graphical
