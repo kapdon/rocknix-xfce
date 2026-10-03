@@ -254,6 +254,14 @@ def install_host(candidate, preserve_candidate=False):
             atomic(destination / source.name, data, 0o644 if directory == 'input' else 0o755)
         prune_host_files(destination, {source.name for source in
                                      (candidate / 'payload' / directory).iterdir()})
+    # This shared sizing helper also runs on the host before nested Steam starts.
+    guest_helpers = BASE / 'guest'
+    guest_helpers.mkdir(exist_ok=True)
+    safe_directory(guest_helpers)
+    sizing = candidate / 'payload/guest/rocknix-gamescope'
+    if not sizing.is_file() or sizing.is_symlink():
+        raise RuntimeError('missing trusted Gamescope sizing helper')
+    atomic(guest_helpers / sizing.name, sizing.read_bytes(), 0o755)
     for name in ('README.md', 'uninstall.sh', 'upgrade.sh', 'upgrade-lxc.py', 'build-info'):
         atomic(BASE / name, (candidate / name).read_bytes())
     for source, destination, mode in (

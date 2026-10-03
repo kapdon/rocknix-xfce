@@ -15,9 +15,11 @@ for scenario in ('normal', 'ownership-interrupt', 'activation-interrupt', 'colli
         project = base / 'project'
         bundle = project / 'staging/bundle'
         for name in ('rootfs/etc', 'host-tools/usr/bin', 'payload/bin', 'payload/input',
-                     'payload/integration', 'payload/systemd'):
+                     'payload/integration', 'payload/systemd', 'payload/guest'):
             (bundle / name).mkdir(parents=True)
         (bundle / 'rootfs/etc/rocknix-desktop-release').write_text('ROCKNIX_LXC_RUNTIME=1\n')
+        sizing = bundle / 'payload/guest/rocknix-gamescope'
+        sizing.write_bytes(Path('rootfs-overlay/usr/local/bin/rocknix-gamescope').read_bytes())
         app = bundle / 'rootfs/application'
         app.write_text('application')
         identity = app.stat().st_ino
@@ -75,6 +77,9 @@ for scenario in ('normal', 'ownership-interrupt', 'activation-interrupt', 'colli
                 continue
             install(bundle, project, api, storage)
         assert not journal.exists()
+        host_sizing = project / 'managed/host/guest/rocknix-gamescope'
+        assert host_sizing.read_bytes() == sizing.read_bytes()
+        assert host_sizing.stat().st_uid == 0 and host_sizing.stat().st_mode & 0o777 == 0o755
         installed = project / 'data/rootfs/application'
         assert installed.stat().st_ino == identity and installed.stat().st_uid == 200000
         assert (project / 'data/home').stat().st_uid == 201000
