@@ -113,12 +113,12 @@ repository state at build time; image/source pins and build metadata record
 provenance. The bundled keyboard source and customizations ship with the runtime.
 
 Debian package maintenance uses normal sudo/APT from Desktop as `rocknix`.
-The default password is `rocknix`; `passwd` changes it, and updates preserve
-existing password hashes. Root login stays locked. Container-root code executes
+The default password is `rocknix`; `passwd` changes it until the next system
+replacement update. Root login stays locked. Container-root code executes
 only through mapped LXC, never through a guest-controlled host-root loader.
-The LXC updater preserves the existing rootfs, packages and home, applying a
-managed integration archive and independent host payload. Conflicting guest
-systemd edits block activation and require reconciliation before resuming.
+The LXC updater assembles a fresh component rootfs, checks it in mapped LXC,
+and replaces rootfs and host integration with rollback until activation succeeds.
+Home and shared storage remain in place; system packages and edits are replaced.
 No native account, keyboard binary or ROCKNIX package is replaced.
 
 See [Install, Update and Uninstall](upgrades.md) before replacing an installation.

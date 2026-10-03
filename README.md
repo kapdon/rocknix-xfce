@@ -148,7 +148,7 @@ Keep saves the choice, and exit restores the host display. Desktop defaults to 1
 See the [desktop guide](docs/desktop-guide.md) for keyboard and window details.
 
 Desktop apps share one unprivileged container. Guest user/sudo password is
-`rocknix` / `rocknix`; change it with `passwd`. Updates preserve passwords.
+`rocknix` / `rocknix`; change it with `passwd`. System replacement updates reset this password.
 Container sudo cannot become native host root. See [architecture](docs/architecture.md).
 
 ## Storage and backup
@@ -177,7 +177,7 @@ from project-managed host files:
 
 `data/rootfs/` becomes the container's `/`, including installed packages,
 passwords and system settings. `data/home/` becomes `/home/rocknix`.
-Update preserves both; Install replaces them after the overwrite warning.
+Update replaces rootfs and preserves home. Install replaces both after the overwrite warning.
 The helpers and dependencies in `managed/host/` are refreshed by Update.
 Its `state/` also holds persistent display preferences and operation guards;
 do not delete active journals, staging or guards. Failed installer staging may
