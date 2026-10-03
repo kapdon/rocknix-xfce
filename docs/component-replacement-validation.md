@@ -147,3 +147,51 @@ RP6 was left with Desktop active, Steam stopped, Auto/Desktop controls, the
 original packaged graphics selection, and test-owned home fixtures removed.
 The local receipt identifies the exact candidate above. No push or hosted build
 was triggered. This follow-up report does not change the tested runtime bytes.
+
+
+## Guest controller and X11 sizing follow-up — 2026-10-03
+
+Candidate `188e9534647b8b94b6bcc000553b79add1b80f6e`, manifest SHA-256
+`94ded96eb2c3182cdc924614d53726ad431f0f60fd6b729abc04a76a5a51c003`, was built
+locally from clean commits and installed through component replacement. The
+local Trash override remains; this candidate is not a publishable release.
+
+Full project checks passed before deployment. The ARM64 satellite build passed,
+as did its focused `compositor_constrained_resize_state`,
+`reconfigure_toplevel`, and `client_side_decorations` tests. The focused fixture
+uses protocol-correct four-byte state-array entries. No unchanged upstream suite
+was run. The component includes the modified satellite source for attribution.
+
+RP6 device evidence:
+
+- Update preserved the mixed-owner home inode/mode/link/xattr fixture. The
+  original installed PD2 Launcher 0.1.0 package was restored byte-for-byte from
+  its existing home-resident Debian package; the game and Wine prefix remained
+  in the preserved home. The preservation fixture was then removed.
+- Narrow input exposure passed the installed boundary audit. Only the native
+  virtual DualSense event device and read-only joystick discovery metadata are
+  exported. Guest UID1000 opens the event node read/write. No whole host input
+  directory, physical gamepad, hidraw or uinput is exported.
+- Launching through PD2 Launcher's Play button reached its login screen. In the
+  same Wine prefix, XInputGetState(0) and joyGetPosEx(0) returned success. Before
+  exposure, all XInput slots returned disconnected and no joystick index opened.
+  This supersedes the preceding report's no-guest-input limitation.
+- A non-Wine X11 window previously escaped its 1920x953 tiled allocation by
+  requesting 1920x1080. After the bridge fix, tiled resize stays 1920x953;
+  floating resize accepts 900x700; fullscreen stays 1920x1080 despite a smaller
+  client request; returning to tiled restores 1920x953.
+- PD2's X11 top-level now stays at the compositor allocation. Wine initially
+  reported matching 1920x953 client dimensions, but a later sample showed its
+  child drawing window and Windows client rectangle at 1920x1080 while the
+  top-level remained 1920x953. A subsequent child sample returned to 1920x953.
+  Rendering remained visibly cropped. This is not a claim that touch alignment
+  or the game renderer is fixed.
+
+No Wine registry or D2GL preferences were changed by this work. The detailed
+[PD2 input handoff](PD2_INPUT_HANDOFF.md) records the residual rendering/input
+investigation and ownership boundary. Physical controller button/axis behavior,
+touch alignment and gameplay remain unconfirmed. The game was left open for
+that user check. Normal and crash ACL restoration are covered by the existing
+lease fixtures, but this candidate's new event-device grant has not yet been
+requalified through a live Desktop shutdown/crash cycle. No push or hosted build
+was triggered; the installed receipt records this exact local candidate.
