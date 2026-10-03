@@ -51,9 +51,7 @@ with tempfile.TemporaryDirectory(prefix='rocknix-components-test-') as temp:
         'payload/bin/rocknix-lxc': {'host-integration'},
         'rootfs-overlay/usr/share/themes/ROCKNIX/gtk-3.0/gtk.css': {'guest-integration', 'host-theme'},
         'build-support/mpv-ffmpeg/build.sh': {'mpv-media'},
-        'build-support/trash/mount-identity.h': {'trash-packages', 'guest-base', 'xwayland'},
-        'build-support/xwayland/install-image.py': {'xwayland'},
-        'build-support/xwayland/check-packages.py': {'guest-base', 'xwayland'},
+        'build-support/trash/mount-identity.h': {'trash-packages', 'guest-base'},
         'rootfs-overlay/usr/local/bin/rocknix-container-update': {'guest-integration', 'host-integration'},
     }
     for name, expected in cases.items():
@@ -96,7 +94,6 @@ with tempfile.TemporaryDirectory(prefix='rocknix-components-test-') as temp:
                 put(archive, 'etc/gtk-3.0/settings.ini', b'base theme, owned by host-theme', mode=0o644)
             elif role == 'xwayland':
                 put(archive, 'opt/rocknix-xwayland/bin/xwayland-satellite')
-                put(archive, 'payload/guest/xwayland-packages.tar', b'offline X11 packages', mode=0o644)
             elif role == 'keyboard':
                 put(archive, 'usr/local/bin/wvkbd-rocknix')
             else:
@@ -171,11 +168,11 @@ with tempfile.TemporaryDirectory(prefix='rocknix-components-test-') as temp:
     assert (assembled / 'rootfs/var/lib/service/data').stat().st_gid == 102
     assert not (assembled / 'payload/guest/trash-packages.tar').exists()
     assert (assembled / 'rootfs/opt/rocknix-xwayland/bin/xwayland-satellite').is_file()
-    assert (assembled / 'payload/guest/xwayland-packages.tar').read_bytes() == b'offline X11 packages'
+    assert not (assembled / 'payload/guest/xwayland-packages.tar').exists()
     C['assemble'](new, selected('update'), work / 'update', 'update')
-    assert not (work / 'update/rootfs/etc/shadow').exists()
-    assert (work / 'update/payload/guest/trash-packages.tar').exists()
-    assert (work / 'update/payload/guest/xwayland-packages.tar').read_bytes() == b'offline X11 packages'
+    assert (work / 'update/rootfs/etc/shadow').exists()
+    assert not (work / 'update/payload/guest/trash-packages.tar').exists()
+    assert not (work / 'update/payload/guest/xwayland-packages.tar').exists()
     api = runpy.run_path(str(PROJECT / 'rootfs-overlay/usr/local/bin/rocknix-container-update'))
     baseline = work / 'baseline'
     assert not api['apply'](baseline, work / 'update/desktop-integration.tar.gz')
@@ -183,7 +180,7 @@ with tempfile.TemporaryDirectory(prefix='rocknix-components-test-') as temp:
     assert (baseline / 'opt/rocknix-mpv/lib/real.so').exists()
     assert not api['apply'](baseline, work / 'update/desktop-integration.tar.gz')
     assert (baseline / 'opt/rocknix-mpv/lib/real.so').exists()
-    print('PASS: fresh/update profiles preserve owners, setuid, links and full managed union; update excludes rootfs seed')
+    print('PASS: fresh/update profiles preserve owners, setuid, links and full managed union; both include the complete rootfs')
     upgrade = runpy.run_path(str(PROJECT / 'payload/bin/rocknix-lxc-upgrade'))
     release_path = work / 'release.json'; release_path.write_bytes(C['encoded'](new))
     cache = work / 'components'; cache.mkdir()
@@ -194,19 +191,15 @@ with tempfile.TemporaryDirectory(prefix='rocknix-components-test-') as temp:
                     helper_path=lambda _: PROJECT / 'payload/bin/rocknix-components',
                     safe_directory=lambda _: None):
         assert upgrade['extract'](release_path, C['digest'](release_path), candidate) == 'a' * 40
-    assert not (candidate / 'rootfs').exists()
+    assert (candidate / 'rootfs/etc/shadow').exists()
     assert (candidate / 'desktop-integration.tar.gz').is_file()
-    assert (candidate / 'payload/guest/xwayland-packages.tar').is_file()
-    print('PASS: real format-2 upgrade extraction verifies manifest and stages only host/update payloads')
+    assert (candidate / 'rootfs/opt/rocknix-xwayland/bin/xwayland-satellite').is_file()
+    print('PASS: real format-2 upgrade extraction verifies manifest and stages a complete replacement')
 
 
     legacy = copy.deepcopy(new)
     legacy['components'].pop('xwayland')
-    C['release'](legacy)
-    legacy_files = {r: allfiles[r] for r in C['profile_roles'](legacy, 'update')}
-    C['assemble'](legacy, legacy_files, work / 'legacy-update', 'update')
-    assert not (work / 'legacy-update/payload/guest/xwayland-packages.tar').exists()
-    print('PASS: pre-Xwayland component manifests remain readable')
+    rejects(C['release'], legacy)
 
     bad = copy.deepcopy(new)
     bad['components']['host-integration']['managed'] = copy.deepcopy(new['components']['guest-integration']['managed'])

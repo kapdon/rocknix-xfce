@@ -85,11 +85,6 @@ chown 0:0 "${TEMP_DIR}/payload/guest/rocknix-container-update"
 python3 "${PROJECT_DIR}/scripts/package-trash.py" "${TRASH_PACKAGES_DIR}" \
   "${TEMP_DIR}/payload/guest/trash-packages.tar"
 chown 0:0 "${TEMP_DIR}/payload/guest/trash-packages.tar"
-python3 "${PROJECT_DIR}/scripts/package-trash.py" \
-  "${TEMP_DIR}/rootfs/opt/rocknix-xwayland/packages" \
-  "${TEMP_DIR}/payload/guest/xwayland-packages.tar" "${PROJECT_DIR}/build-support/xwayland"
-chown 0:0 "${TEMP_DIR}/payload/guest/xwayland-packages.tar"
-rm -r "${TEMP_DIR}/rootfs/opt/rocknix-xwayland/packages"
 
 printf 'built=%s\nbase_image=%s\nrootfs_image=%s\narchitecture=arm64\ncommit=%s\n' \
   "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \

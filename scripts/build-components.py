@@ -27,8 +27,7 @@ ROOT_STAGES = {
     'firefox-media': ('ffmpeg-cross-builder', 'ffmpeg-rpi-builder', 'firefox-component'),
     'mpv-media': ('ffmpeg-cross-builder', 'mpv-ffmpeg-builder', 'mpv-component'),
     'keyboard': ('keyboard-builder', 'keyboard-component'),
-    'xwayland': ('trash-package-inputs', 'desktop-dependencies', 'xwayland-builder',
-                 'xwayland-package-payload', 'xwayland-component'),
+    'xwayland': ('xwayland-builder', 'xwayland-component'),
 }
 DOCKER = {'xwayland': ('Dockerfile.rootfs', 'xwayland-component'),
           'guest-base': ('Dockerfile.rootfs', 'guest-base'),
@@ -87,15 +86,13 @@ def input_keys(root=None):
     selected = {
         'guest-base': ['build-support/components/bootstrap-base.sh',
                        'build-support/trash/check-packages.py', 'build-support/trash/install-image.py',
-                       'build-support/xwayland/check-packages.py',
                        'rootfs-overlay/usr/local/bin/rocknix-default-password',
                        'rootfs-overlay/etc/systemd/system/rocknix-desktop-session.service'],
         'host-runtime': [],
         'firefox-media': ['build-support/ffmpeg/build.sh'],
         'mpv-media': ['build-support/mpv-ffmpeg'],
         'keyboard': ['build-support/wvkbd'],
-        'xwayland': ['build-support/xwayland', 'build-support/trash/check-packages.py',
-                     'build-support/trash/install-image.py', 'scripts/package-trash.py'],
+        'xwayland': [],
         'fuzzel': ['build-support/fuzzel'],
         'trash-packages': ['build-support/trash', 'scripts/package-trash.py', 'payload/guest/update-trash-packages.py'],
         'guest-integration': ['rootfs-overlay'],
@@ -124,7 +121,7 @@ def input_keys(root=None):
             directory = Path(os.environ['ROCKNIX_TRASH_PACKAGES_DIR'])
             data['native_override'] = paths(directory, [p.name for p in directory.iterdir()
                 if p.name != 'provenance.json'])
-        if role in ('guest-base', 'xwayland'):
+        if role == 'guest-base':
             data['trash_packages'] = keys['trash-packages']
         if role == 'guest-base':
             # Ownership policy, not configuration contents, determines what the
@@ -295,8 +292,7 @@ def payload_tar(role, work, raw=None, trash=None):
                             continue
                         if any(name.startswith(p + '/') for p in ('dev', 'proc', 'run', 'sys', 'tmp')):
                             continue
-                    item.name = (name if role == 'xwayland' and name.startswith('payload/')
-                                 else prefix + name)
+                    item.name = prefix + name
                     if item.islnk():
                         item.linkname = prefix + item.linkname.removeprefix('./')
                     archive.addfile(item, source.extractfile(original) if item.isfile() else None)
@@ -362,9 +358,6 @@ def check_payload(role, path):
             item = members.get(name)
             if not item or not item.mode & 0o111 or not (item.isfile() or item.islnk() or item.issym()):
                 raise RuntimeError('component lacks required executable: ' + name)
-        if role == 'xwayland' and not (members.get('payload/guest/xwayland-packages.tar')
-                                      and members['payload/guest/xwayland-packages.tar'].isfile()):
-            raise RuntimeError('Xwayland component lacks its offline package transaction')
         if role == 'guest-base' and 'rootfs/usr/bin/Xorg' in members:
             raise RuntimeError('unexpected Xorg in guest component')
         if role == 'host-runtime':
@@ -487,13 +480,13 @@ def build(store, output, plan_only=False):
             if specs[role] is not None:
                 continue
             begin = time.monotonic(); work = scratch / role; work.mkdir()
-            if role in ('trash-packages', 'guest-base', 'xwayland') and trash is None:
+            if role in ('trash-packages', 'guest-base') and trash is None:
                 trash_work = scratch / 'trash-inputs'; trash_work.mkdir()
-                if role in ('guest-base', 'xwayland') and specs['trash-packages'] is not None:
+                if role == 'guest-base' and specs['trash-packages'] is not None:
                     trash = cached_trash(store, specs['trash-packages'], trash_work)
                 else:
                     trash = prepare_trash(trash_work)
-            raw = docker_export(role, work, trash if role in ('guest-base', 'xwayland') else None) if role in DOCKER and role != 'trash-packages' else None
+            raw = docker_export(role, work, trash if role == 'guest-base' else None) if role in DOCKER and role != 'trash-packages' else None
             payload = payload_tar(role, work, raw, trash)
             check_payload(role, payload)
             specs[role] = compress(role, keys[role], payload, store)

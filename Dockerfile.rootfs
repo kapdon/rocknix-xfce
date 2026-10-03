@@ -167,13 +167,8 @@ RUN printf '#!/bin/sh\nexit 101\n' >/usr/sbin/policy-rc.d \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-COPY build-support/xwayland/check-packages.py /tmp/check-x11-packages.py
-# Retain signed-APT artifacts for the offline update of existing containers.
-RUN apt-get update && mkdir -p /opt/rocknix-xwayland/packages \
-    && apt-get install -y --download-only --no-install-recommends xwayland x11-xkb-utils x11-utils \
-    && cp /var/cache/apt/archives/*.deb /opt/rocknix-xwayland/packages/ \
-    && python3 /tmp/check-x11-packages.py /opt/rocknix-xwayland/packages \
-    && rm /tmp/check-x11-packages.py \
+# X11 dependencies are part of every fresh guest base, including upgrades.
+RUN apt-get update \
     && apt-get install -y --no-install-recommends xwayland x11-xkb-utils x11-utils \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
@@ -219,20 +214,12 @@ COPY rootfs-overlay/etc/systemd/system/rocknix-desktop-session.service /etc/syst
 COPY build-support/components/bootstrap-base.sh /tmp/bootstrap-base.sh
 RUN sh /tmp/bootstrap-base.sh && rm /tmp/bootstrap-base.sh
 
-# Reuse the signed X11 packages for retained-container updates, while keeping
-# the compiled bridge out of the base component and its managed namespace.
-FROM desktop-dependencies AS xwayland-package-payload
-COPY scripts/package-trash.py /tmp/package-x11.py
-COPY build-support/xwayland/ /tmp/xwayland-tools/
-RUN python3 /tmp/package-x11.py /opt/rocknix-xwayland/packages /tmp/xwayland-packages.tar /tmp/xwayland-tools
-
 FROM scratch AS xwayland-component
 COPY --from=xwayland-builder /tmp/satellite/target/aarch64-unknown-linux-gnu/release/xwayland-satellite /opt/rocknix-xwayland/bin/xwayland-satellite
 COPY --from=xwayland-builder /tmp/satellite.tar.gz /opt/rocknix-xwayland/source/satellite.tar.gz
 COPY --from=xwayland-builder /tmp/vendor.tar.gz /opt/rocknix-xwayland/source/vendor.tar.gz
 COPY --from=xwayland-builder /tmp/satellite/LICENSE /opt/rocknix-xwayland/LICENSE
 
-COPY --from=xwayland-package-payload /tmp/xwayland-packages.tar /payload/guest/xwayland-packages.tar
 
 FROM scratch AS firefox-component
 COPY --from=ffmpeg-rpi-builder /opt/ffmpeg-rpi-7.1.5/ /opt/ffmpeg-rpi-7.1.5/
