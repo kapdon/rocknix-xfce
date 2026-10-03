@@ -3,12 +3,12 @@
 ## Ownership and requested outcome
 
 The PD2 Launcher agent owns its Wine runner, prefix policy and game renderer
-integration. RXC owns device exposure and the Sway/Xwayland bridge. Investigate
+integration. LXC owns device exposure and the Sway/Xwayland bridge. Investigate
 remaining PD2 touch/rendering behavior without changing the user's D2GL settings
 silently, forcing a universal resolution, or changing the host display mode.
-No PD2 Launcher source or Wine registry settings were edited by RXC in this pass.
+No PD2 Launcher source or Wine registry settings were edited by LXC in this pass.
 
-## Tested environment and RXC changes
+## Tested environment and LXC changes
 
 2026-10-03, Retroid Pocket 6, ROCKNIX 20260930, Debian ARM64 unprivileged LXC,
 guest user rocknix UID1000 mapped to host UID201000. Host Sway owns the display;
@@ -16,12 +16,12 @@ guest xwayland-satellite 0.8.3 owns Xwayland :0. Wine runs through native FEX
 inside LXC. The output is 1920x1080 logical pixels, scale 1. With this tabbed
 layout and the bottom panel, Sway assigns the game x=0,y=47,width=1920,height=953.
 
-Installed RXC candidate: `188e9534647b8b94b6bcc000553b79add1b80f6e`.
+Installed LXC candidate: `188e9534647b8b94b6bcc000553b79add1b80f6e`.
 Component manifest SHA-256:
 `94ded96eb2c3182cdc924614d53726ad431f0f60fd6b729abc04a76a5a51c003`.
 This is a local validation build with a local package override, not a release.
 
-Two generic RXC defects were addressed:
+Two generic LXC defects were addressed:
 
 1. Previously LXC exposed no controller event device. It now binds only the
    qualified native InputPlumber virtual DualSense gamepad and minimal read-only
@@ -61,7 +61,7 @@ controller backend/mapping. Enumeration is verified; physical gameplay is not.
 
 ## Remaining rendering/touch investigation
 
-After the RXC fix, real Wine reports:
+After the LXC fix, real Wine reports:
 
 ```
 GetWindowRect: -3,-22 .. 1923,956
@@ -113,7 +113,7 @@ separately from successful production launch; no FEX change was made here.
 - Resize/toggle modes without altering persistent D2GL preferences; verify
   rendering and hit targets follow the accepted client area.
 - Keep launcher modifications in the PD2 repository. If a generic bridge issue
-  remains, return a minimal non-game-specific reproduction to RXC.
+  remains, return a minimal non-game-specific reproduction to LXC.
 
 No login, account creation or gameplay was performed. The game was left open
 for the user's physical test. No push, merge, hosted build or release occurred.
