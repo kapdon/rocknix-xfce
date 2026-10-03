@@ -65,6 +65,8 @@ def main(argv=None):
     if not command:
         parser.error('provide -- program [arguments]')
     env = dict(os.environ, SDL_VIDEODRIVER='wayland', ENABLE_GAMESCOPE_WSI='0', DISABLE_GAMESCOPE_WSI='1')
+    # Debian also installs Gamescope's execvp-launched helpers in /usr/games.
+    env['PATH'] = env.get('PATH', os.defpath) + ':/usr/games'
     # Guest SDL/Wayland works without exposing a DRM primary node to the LXC.
     # Children use Gamescope's X11 display, not the outer desktop's Wayland socket.
     os.execve('/usr/games/gamescope', ['gamescope', '--backend', 'sdl', *dimensions,

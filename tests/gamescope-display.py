@@ -50,7 +50,8 @@ class Display(unittest.TestCase):
             bridge = Path(tmp)
             (bridge / 'games.json').write_text(json.dumps({'virtual_display': True}))
             (bridge / 'workarea.json').write_text(json.dumps(area()))
-            with patch.dict(api['configured_args'].__globals__, BRIDGE=bridge), patch('os.execve') as execute:
+            with patch.dict(api['configured_args'].__globals__, BRIDGE=bridge), patch('os.execve') as execute, \
+                    patch.dict(os.environ, PATH='/usr/local/bin:/usr/bin'):
                 command = ['wine', '/games/a game.exe', '$(touch /tmp/unsafe)']
                 main(['--', *command])
                 binary, argv, env = execute.call_args.args
@@ -59,6 +60,7 @@ class Display(unittest.TestCase):
                 self.assertEqual(argv[-len(command):], command)
                 self.assertIn('953', argv)
                 self.assertEqual(env['SDL_VIDEODRIVER'], 'wayland')
+                self.assertEqual(env['PATH'], '/usr/local/bin:/usr/bin:/usr/games')
                 self.assertEqual(env['DISABLE_GAMESCOPE_WSI'], '1')
                 # Off uses the full monitor, independent of the current client size.
                 main(['--virtual-display', 'off', '--', *command])
