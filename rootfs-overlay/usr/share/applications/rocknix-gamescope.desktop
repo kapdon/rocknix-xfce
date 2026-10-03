@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Launch with Gamescope
+Comment=Choose an X11 or Wine app to run in a virtual display; close existing instances first
+Exec=/usr/local/bin/rocknix-launcher gamescope-apps
+Icon=/usr/share/icons/Adwaita/scalable/devices/input-gaming.svg
+Categories=Game;
+Terminal=false
+StartupNotify=false

@@ -11,6 +11,9 @@ the change list.
 
 ## Highlights since v0.1.0
 
+- **Gamescope app picker:** Keep “Launch with Gamescope” first in the initial
+  Apps list, reuse installed app entries and display settings, and show a gamepad
+  icon for both it and Steam games.
 - **Gamescope display fitting:** Default nested games to the current Sway
   content area, with an option to use the full monitor resolution and a shared launcher for
   LXC X11/Wine games. Keep the game resolution stable while Gamescope scales

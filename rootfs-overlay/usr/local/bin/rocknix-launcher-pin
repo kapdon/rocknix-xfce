@@ -1,0 +1,39 @@
+#!/usr/bin/python3
+"""Keep the Gamescope action first in Fuzzel's unfiltered Apps list."""
+import os
+from pathlib import Path
+import sys
+import tempfile
+
+ENTRY = 'rocknix-gamescope.desktop'
+
+
+def pin(path):
+    counts = {}
+    try:
+        lines = path.read_text().splitlines()
+    except FileNotFoundError:
+        lines = []
+    for line in lines:
+        name, separator, value = line.rpartition('|')
+        if separator and name != ENTRY and value.isascii() and value.isdecimal():
+            counts[name] = min(int(value), 2147483646) if len(value) <= 10 else 2147483646
+    # Preserve normal usage counts; normalize only near signed-counter overflow.
+    if max(counts.values(), default=0) >= 2147483645:
+        counts = {name: value // 2 for name, value in counts.items()}
+    counts[ENTRY] = max(counts.values(), default=0) + 1
+    descriptor, temporary = tempfile.mkstemp(prefix=path.name + '.', dir=path.parent)
+    try:
+        with os.fdopen(descriptor, 'w') as stream:
+            stream.writelines(f'{name}|{value}\n' for name, value in counts.items())
+        os.replace(temporary, path)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
+
+
+if __name__ == '__main__':
+    try:
+        pin(Path(sys.argv[1]))
+    except OSError as error:
+        # An unwritable usage cache must not prevent launching applications.
+        print(f'Apps pin unavailable: {error}', file=sys.stderr)

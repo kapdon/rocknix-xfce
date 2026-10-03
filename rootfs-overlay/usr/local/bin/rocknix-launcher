@@ -10,10 +10,12 @@ fi
 mode=${1:-apps}
 fuzzel_args=(rocknix-fuzzel)
 case "${mode}" in
-  apps|settings)
+  apps|gamescope-apps|settings)
     # A second tap dismisses this menu, never a confirmation or another user's menu.
     namespace=rocknix-desktop-${mode}
-    if pkill -u "${UID}" -f "^/opt/rocknix-fuzzel/bin/fuzzel --override=namespace=${namespace}( |$)"; then
+    dismiss_namespace=${namespace}
+    [ "${mode}" != apps ] || dismiss_namespace='rocknix-desktop-(apps|gamescope-apps)'
+    if pkill -u "${UID}" -f "^/opt/rocknix-fuzzel/bin/fuzzel --override=namespace=${dismiss_namespace}( |$)"; then
       exit 0
     fi
     fuzzel_args+=(--override="namespace=${namespace}")
@@ -123,7 +125,13 @@ case "${mode}" in
     exec "${fuzzel_args[@]}" --cache=/dev/null --dmenu --no-sort \
       --lines="${line_count}" --prompt='DISPLAY  ' --placeholder="${2:-Choose a setting}"
     ;;
+  gamescope-apps)
+    exec "${fuzzel_args[@]}" --cache="${cache}-gamescope" --lines="${line_count}" \
+      --prompt='GAMESCOPE  ' --placeholder='Choose an X11 or Wine app' \
+      --launch-prefix=/usr/local/bin/rocknix-gamescope-app
+    ;;
   apps)
+    rocknix-launcher-pin "${cache}"
     exec "${fuzzel_args[@]}" --cache="${cache}" --lines="${line_count}"
     ;;
   confirm-return)

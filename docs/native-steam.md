@@ -100,7 +100,21 @@ isolated display; Off uses the monitor's full resolution, without subtracting
 panels or tabs. It does not revert to a fixed 720p resolution.
 Changing either setting preserves the other and affects only future launches.
 
-LXC programs can use the same policy without going through Steam:
+**Apps → Launch with Gamescope → choose an app** uses the same installed
+`.desktop` catalog as normal Apps. The Gamescope entry is kept first when Apps
+opens with an empty search; typing still filters normally. Other app usage
+counts are preserved. The Gamescope picker has its own usage ordering.
+Both this entry and Steam games use the installed Adwaita `input-gaming` icon.
+
+Close existing instances before using this path: an application may otherwise
+forward the request to its existing process outside Gamescope. This option is
+for X11/Wine applications; Wayland-only applications should use normal Apps.
+Steam games and shortcuts that already start Gamescope should also use normal
+Apps. Launch failures show a menu and write
+`~/.local/state/rocknix-desktop/gamescope-app.log` (or `$XDG_STATE_HOME`).
+The original desktop entries and Wine/game settings are not rewritten.
+
+LXC programs can also use the same policy from a terminal:
 
 ```sh
 rocknix-gamescope -- wine /path/to/game.exe
@@ -119,9 +133,17 @@ host library tree or additional DRM primary device is exposed for it.
 The host and guest packages contain the same sizing helper from one canonical
 source. Source regressions cover toggle persistence, legacy settings, content
 bounds, scale, stale/invalid geometry, argument preservation, native DRM routing
-and Steam restart behavior. This feature has not yet been built into a new
-bundle or qualified on RP6 for rendering, physical touch, input or frame times.
-The earlier SDL-backend probe is not validation of this new feature.
+and Steam restart behavior. The display policy was installed on RP6 at `fd0c7c2`: X11 probe checks covered
+fit/native dimensions and keyboard resizing, and the user confirmed PD2
+fullscreen works through a Gamescope-wrapped launcher. This does not qualify
+all games, physical input or frame times. The later generic Apps picker was applied as a live UI preview without restarting
+LXC. RP6 checks verified its pinned entry and icons, real Fuzzel selection into
+Gamescope, quoted arguments and working directory, and normal launches remaining
+on the outer display. Fullscreen game acceptance remains the user's PD2 test.
+Debian Gamescope was observed aborting during teardown after a clean probe exit;
+the app prefix records the child's exit status so that teardown does not falsely
+report a failed application launch. The compositor teardown issue itself is not
+fixed by this change.
 
 ## Accepted trust tradeoff
 
