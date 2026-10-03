@@ -109,6 +109,6 @@ and does not invalidate installation. Archive compression settings are unchanged
 The guest image builds checksum-pinned Xwayland Satellite 0.8.3 with its locked
 Rust dependencies. Its upstream source, vendored dependency sources and license
 ship under `/opt/rocknix-xwayland`. Debian supplies Xwayland and X11 utilities.
-The bundle retains the required signed-APT package artifacts for offline updates
+Both the full bundle and the Xwayland component retain signed-APT package artifacts for offline updates
 of existing containers. Maintenance checks the package allowlist, keeps newer
 installed versions and refuses removals or unrelated package changes.

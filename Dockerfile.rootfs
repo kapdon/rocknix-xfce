@@ -176,10 +176,6 @@ RUN apt-get update && mkdir -p /opt/rocknix-xwayland/packages \
     && rm /tmp/check-x11-packages.py \
     && apt-get install -y --no-install-recommends xwayland x11-xkb-utils x11-utils \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
-COPY --from=xwayland-builder /tmp/satellite/target/aarch64-unknown-linux-gnu/release/xwayland-satellite /opt/rocknix-xwayland/bin/xwayland-satellite
-COPY --from=xwayland-builder /tmp/satellite.tar.gz /opt/rocknix-xwayland/source/satellite.tar.gz
-COPY --from=xwayland-builder /tmp/vendor.tar.gz /opt/rocknix-xwayland/source/vendor.tar.gz
-COPY --from=xwayland-builder /tmp/satellite/LICENSE /opt/rocknix-xwayland/LICENSE
 
 COPY build-support/trash/check-packages.py build-support/trash/install-image.py /tmp/trash-tools/
 # A named context supplied by build-rootfs.sh / the ARM64 release workflow.
@@ -196,6 +192,11 @@ RUN --network=none --mount=from=trash-package-inputs,target=/tmp/trash-packages,
     && dpkg-query -W -f='${binary:Package}\t${Version}\n' | sort >/etc/rocknix-desktop-packages.tsv
 
 FROM desktop-dependencies AS desktop-compiled
+COPY --from=xwayland-builder /tmp/satellite/target/aarch64-unknown-linux-gnu/release/xwayland-satellite /opt/rocknix-xwayland/bin/xwayland-satellite
+COPY --from=xwayland-builder /tmp/satellite.tar.gz /opt/rocknix-xwayland/source/satellite.tar.gz
+COPY --from=xwayland-builder /tmp/vendor.tar.gz /opt/rocknix-xwayland/source/vendor.tar.gz
+COPY --from=xwayland-builder /tmp/satellite/LICENSE /opt/rocknix-xwayland/LICENSE
+
 COPY --from=fuzzel-artifacts /opt/rocknix-fuzzel/ /opt/rocknix-fuzzel/
 COPY --from=keyboard-builder /tmp/wvkbd/wvkbd-mobintl /usr/local/bin/wvkbd-rocknix
 COPY --from=keyboard-builder /tmp/wvkbd/LICENSE /usr/local/share/wvkbd/LICENSE
@@ -217,6 +218,21 @@ COPY rootfs-overlay/usr/local/bin/rocknix-default-password /tmp/rocknix-default-
 COPY rootfs-overlay/etc/systemd/system/rocknix-desktop-session.service /etc/systemd/system/rocknix-desktop-session.service
 COPY build-support/components/bootstrap-base.sh /tmp/bootstrap-base.sh
 RUN sh /tmp/bootstrap-base.sh && rm /tmp/bootstrap-base.sh
+
+# Reuse the signed X11 packages for retained-container updates, while keeping
+# the compiled bridge out of the base component and its managed namespace.
+FROM desktop-dependencies AS xwayland-package-payload
+COPY scripts/package-trash.py /tmp/package-x11.py
+COPY build-support/xwayland/ /tmp/xwayland-tools/
+RUN python3 /tmp/package-x11.py /opt/rocknix-xwayland/packages /tmp/xwayland-packages.tar /tmp/xwayland-tools
+
+FROM scratch AS xwayland-component
+COPY --from=xwayland-builder /tmp/satellite/target/aarch64-unknown-linux-gnu/release/xwayland-satellite /opt/rocknix-xwayland/bin/xwayland-satellite
+COPY --from=xwayland-builder /tmp/satellite.tar.gz /opt/rocknix-xwayland/source/satellite.tar.gz
+COPY --from=xwayland-builder /tmp/vendor.tar.gz /opt/rocknix-xwayland/source/vendor.tar.gz
+COPY --from=xwayland-builder /tmp/satellite/LICENSE /opt/rocknix-xwayland/LICENSE
+
+COPY --from=xwayland-package-payload /tmp/xwayland-packages.tar /payload/guest/xwayland-packages.tar
 
 FROM scratch AS firefox-component
 COPY --from=ffmpeg-rpi-builder /opt/ffmpeg-rpi-7.1.5/ /opt/ffmpeg-rpi-7.1.5/

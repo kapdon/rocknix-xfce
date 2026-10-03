@@ -20,6 +20,7 @@ misses; they are not the release artifact store.
 | MPV media | Pinned sources, codec patches, compiler snapshot |
 | Fuzzel | Launcher, Pixman and protocol sources/recipes, compiler snapshot |
 | Keyboard | Sources, layout/patches, compiler snapshot |
+| Xwayland | Satellite sources, signed X11 packages, package validation, compiler snapshot |
 | Guest integration | Overlay scripts, configuration, desktop defaults |
 | Host integration | Host helpers, installer, service/input files, guest updater |
 | Host theme | GTK configuration and ROCKNIX theme assets |
@@ -28,7 +29,7 @@ misses; they are not the release artifact store.
 Changing Waybar CSS rebuilds only guest integration. A GTK theme edit rebuilds
 guest integration and host theme. Changing an MPV patch rebuilds MPV media.
 Changing the Trash family rebuilds its transaction payload and fresh-install
-base. A base-only bootstrap change consumes the cached package transaction instead
+base plus the Xwayland offline package export. A base-only bootstrap change consumes the cached package transaction instead
 of rebuilding the native packages. Changing the packaging format/validator rebuilds components conservatively.
 
 Keys contain source bytes, modes, links, selected Docker stages, build architecture
@@ -174,3 +175,14 @@ interruption acceptance remain separate gates before calling this production
 validated. No hardware operation is part of source or build-performance testing.
 
 Implementation references: [BuildKit GHA cache authentication](https://docs.docker.com/build/cache/backends/gha/) and [GitHub release asset digests](https://docs.github.com/en/rest/releases/assets).
+
+## Xwayland delivery
+
+The Xwayland component carries the guest-owned Satellite bridge and its source
+and license files, plus a bounded offline X11 package transaction for retained
+updates. Fresh installs get Debian X11 packages from the guest base. Both
+profiles include the bridge; retained updates install only the approved package
+set, preserving newer versions and refusing unrelated APT changes.
+
+The format-2 bootstrap also reads older ten-component manifests. A new manifest
+uses its checksum-bound bootstrap to understand the added Xwayland role.

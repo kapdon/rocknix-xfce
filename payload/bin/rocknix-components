@@ -20,9 +20,16 @@ import tempfile
 FORMAT = 2
 ABI = 'debian13-arm64-lxc-v1'
 ROLES = ('guest-base', 'host-runtime', 'firefox-media', 'mpv-media', 'fuzzel',
-         'keyboard', 'guest-integration', 'host-integration', 'host-theme', 'trash-packages')
+         'keyboard', 'xwayland', 'guest-integration', 'host-integration', 'host-theme', 'trash-packages')
 PROFILES = {'install': tuple(x for x in ROLES if x != 'trash-packages'),
             'update': tuple(x for x in ROLES if x != 'guest-base')}
+LEGACY_ROLES = tuple(role for role in ROLES if role != 'xwayland')
+
+
+def profile_roles(value, profile):
+    return tuple(role for role in PROFILES[profile] if role in value['components'])
+
+
 HEX = re.compile(r'[0-9a-f]{64}')
 TOP_FILES = {'install.sh', 'install-device.sh', 'uninstall.sh', 'upgrade.sh',
              'upgrade-lxc.py', 'README.md'}
@@ -50,6 +57,9 @@ def owns(role, name):
         return name == 'host-tools' or name.startswith('host-tools/')
     if role == 'host-integration':
         return name in TOP_FILES or name == 'payload' or name.startswith('payload/')
+    if role == 'xwayland':
+        return (name.startswith('rootfs/opt/rocknix-xwayland/') or
+                name == 'payload/guest/xwayland-packages.tar')
     if role == 'trash-packages':
         return name == 'payload/guest/trash-packages.tar'
     if role == 'host-theme':
@@ -101,7 +111,7 @@ def release(value):
             not re.fullmatch('[0-9a-f]{40}', value.get('commit', '')) or
             not re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z', value.get('built_at', ''))):
         raise RuntimeError('unsupported component release')
-    if set(value.get('components', {})) != set(ROLES):
+    if set(value.get('components', {})) not in (set(ROLES), set(LEGACY_ROLES)):
         raise RuntimeError('incomplete component release')
     seen = set()
     for role, spec in value['components'].items():
@@ -142,17 +152,17 @@ def materialize(value, cache, repository, profile):
     cache = Path(cache)
     return {role: fetch(repository, spec['store_tag'], spec['asset'], cache / spec['asset'],
                         spec['sha256'], spec['size'])
-            for role in PROFILES[profile] for spec in (value['components'][role],)}
+            for role in profile_roles(value, profile) for spec in (value['components'][role],)}
 
 
 def validate_archives(value, files, profile):
     """Validate the whole composition before extraction, including cross-archive links."""
     release(value)
-    if set(files) != set(PROFILES[profile]):
+    if set(files) != set(profile_roles(value, profile)):
         raise RuntimeError('incomplete assembly profile')
     names, links, hardlinks = {}, set(), []
     total = 0
-    for role in PROFILES[profile]:
+    for role in profile_roles(value, profile):
         spec, path = value['components'][role], Path(files[role])
         if path.is_symlink() or path.stat().st_size != spec['size'] or digest(path) != spec['sha256']:
             raise RuntimeError('component checksum mismatch: ' + role)
@@ -177,6 +187,8 @@ def validate_archives(value, files, profile):
                 if item.isdir():
                     root = 'payload' if role in ('host-integration', 'trash-packages') else (
                         'host-tools' if role in ('host-runtime', 'host-theme') else 'rootfs')
+                    if role == 'xwayland' and name in ('payload', 'payload/guest'):
+                        root = 'payload'
                     if name != root and not name.startswith(root + '/'):
                         raise RuntimeError('component directory outside its root')
                 if item.uid < 0 or item.gid < 0 or item.uid >= 65536 or item.gid >= 65536:
@@ -229,7 +241,7 @@ def assemble(value, files, target, profile):
     temporary = Path(tempfile.mkdtemp(prefix='.components-', dir=target.parent))
     try:
         directories = set()
-        for role in PROFILES[profile]:
+        for role in profile_roles(value, profile):
             with tarfile.open(files[role], 'r:xz') as archive:
                 selected = []
                 for item in archive:
