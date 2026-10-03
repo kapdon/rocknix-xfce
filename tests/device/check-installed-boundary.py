@@ -29,7 +29,7 @@ for path in paths:
     assert info.st_uid == 0 and not info.st_mode & 0o022, path
 
 probe = r'''
-import errno,json,os,sys
+import errno,json,os,sys,stat
 from pathlib import Path
 for name in json.loads(sys.argv[1]):
     for parent in Path(name).parents:
@@ -61,7 +61,7 @@ for name in desktop['SHARED']:
         desktop['trusted_directory'](source, 0)
         shares.append(str(source))
 guest = r'''
-import errno,json,os,sys
+import errno,json,os,sys,stat
 from pathlib import Path
 assert os.getuid()==0
 for name in ('uid_map','gid_map'):
@@ -72,9 +72,19 @@ shares=set(json.loads(sys.argv[1]))
 assert {name for name in mounts if name.startswith('/storage/')}==shares
 assert '/storage' not in mounts
 for name in ('/storage/scripts','/storage/rocknix-desktop','/dev/sda19',
-             '/dev/input','/dev/dri/card0','/run/0-runtime-dir',
+             '/dev/uinput','/dev/hidraw0','/dev/dri/card0','/run/0-runtime-dir',
              '/run/docker.sock','/run/host','/run/systemd/private/host'):
     assert not os.path.lexists(name),name
+assert '/dev/input' not in mounts  # Never bind the whole host input directory.
+for node in Path('/dev/input').glob('*'):
+    info=node.stat()
+    assert stat.S_ISCHR(info.st_mode) and os.major(info.st_rdev)==13
+    source=Path('/sys/class/input')/node.name/'device'
+    assert str(source.resolve()).startswith('/sys/devices/virtual/misc/uhid/')
+    assert (source/'name').read_text().strip()=='Sony Interactive Entertainment DualSense Wireless Controller'
+    metadata='/run/udev/data/c13:'+str(os.minor(info.st_rdev))
+    assert 'ro' in mounts[metadata]
+    assert 'E:ID_INPUT_JOYSTICK=1' in Path(metadata).read_text()
 for name in ('/run/rocknix-desktop','/run/rocknix-fex/ArchLinux',
              '/run/rocknix-fex/bin/FEX','/run/rocknix-fex/bin/FEXServer',
              '/run/rocknix-fex/lib/libfmt.so.12'):

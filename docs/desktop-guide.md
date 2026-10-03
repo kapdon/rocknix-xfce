@@ -138,8 +138,10 @@ Wayland window launched inside the mapped LXC; Desktop controls elsewhere.
 Detection checks the focused process, not window titles. Only the InputPlumber
 profile changes; the virtual DualSense stays connected.
 
-Switching profiles does not grant a guest application new device access; the game
-must already be able to read a controller, and some games only detect it at startup.
+Desktop exposes ROCKNIX’s existing virtual DualSense gamepad to guest applications,
+with narrow event-device and discovery-metadata mounts. Physical input devices,
+raw HID and input injection remain private to ROCKNIX. Switching profiles changes
+mappings; some games only detect controllers at startup.
 Exiting Desktop restores ROCKNIX's original profile and targets. Close Desktop
 continues to use the ordinary native ROCKNIX input lifecycle.
 

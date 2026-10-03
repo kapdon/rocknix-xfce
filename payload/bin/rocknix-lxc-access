@@ -20,6 +20,29 @@ DESKTOP_UID = 201000
 STATE = Path('/run/rocknix-lxc-access')
 
 
+def virtual_gamepad(path):
+    """Qualify the native InputPlumber DualSense, never a physical input node."""
+    path = Path(path)
+    if not re.fullmatch(r'/dev/input/event[0-9]+', str(path)):
+        raise RuntimeError('not a gamepad event endpoint')
+    info = path.lstat()
+    if (not stat.S_ISCHR(info.st_mode) or info.st_uid != 0
+            or os.major(info.st_rdev) != 13):
+        raise RuntimeError('unsafe gamepad event endpoint')
+    event = Path('/sys/class/input') / path.name
+    device = (event / 'device').resolve(strict=True)
+    if not str(device).startswith('/sys/devices/virtual/misc/uhid/'):
+        raise RuntimeError('physical input is not exposed to Desktop')
+    if (device / 'name').read_text().strip() != 'Sony Interactive Entertainment DualSense Wireless Controller':
+        raise RuntimeError('not the native virtual gamepad')
+    if ((device / 'id/vendor').read_text().strip(),
+            (device / 'id/product').read_text().strip()) != ('054c', '0ce6'):
+        raise RuntimeError('unexpected virtual gamepad identity')
+    if (event / 'dev').read_text().strip() != f'13:{os.minor(info.st_rdev)}':
+        raise RuntimeError('gamepad device number changed')
+    return info
+
+
 class AccessLease:
     def __init__(self, tools, state=STATE):
         if os.geteuid() != 0:
@@ -62,6 +85,8 @@ class AccessLease:
         if re.fullmatch(r'/run/0-runtime-dir/wayland-[0-9]+', str(path)):
             if not stat.S_ISSOCK(info.st_mode):
                 raise RuntimeError('not a display socket')
+        elif re.fullmatch(r'/dev/input/event[0-9]+', str(path)):
+            virtual_gamepad(path)
         elif path == Path('/dev/dri/renderD128'):
             PROFILE['render_endpoint'](path)
         elif path == Path('/dev/video0'):

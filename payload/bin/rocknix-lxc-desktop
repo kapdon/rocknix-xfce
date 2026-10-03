@@ -185,6 +185,26 @@ class DesktopMounts:
         self.bound.append(target)
         return target
 
+    def gamepad_mounts(self):
+        entries = []
+        for source in sorted(Path('/dev/input').glob('event*')):
+            try:
+                info = ACCESS['virtual_gamepad'](source)
+            except (OSError, RuntimeError):
+                continue
+            self.access.grant(source)
+            target = self.bind(source, 'gamepad-' + source.name)
+            major, minor = os.major(info.st_rdev), os.minor(info.st_rdev)
+            entries += [f'lxc.mount.entry = {target} dev/input/{source.name} none bind,create=file 0 0',
+                        f'lxc.cgroup.devices.allow = c {major}:{minor} rw']
+            # libudev/SDL need discovery properties as well as an evdev node.
+            # Export only the approved virtual gamepad's properties, not host udev.
+            metadata = self.directory / ('gamepad-' + source.name + '-udev')
+            metadata.write_text('E:ID_INPUT=1\nE:ID_INPUT_JOYSTICK=1\nV:1\n')
+            metadata.chmod(0o644)
+            entries.append(f'lxc.mount.entry = {metadata} run/udev/data/c{major}:{minor} none bind,ro,create=file 0 0')
+        return entries
+
     def prepare(self):
         # Must precede every bind, including the writable rootfs staging bind.
         os.unshare(os.CLONE_NEWNS)
@@ -200,6 +220,7 @@ class DesktopMounts:
                    f'lxc.mount.entry = {audio} run/rocknix-bridge/pulse none bind,ro,create=file 0 0',
                    f'lxc.mount.entry = {control} run/rocknix-desktop none bind,ro,create=dir 0 0']
         entries += self.native_providers()
+        entries += self.gamepad_mounts()
         endpoints = [
             (self.wayland, 'wayland', 'run/rocknix-bridge/wayland-1', False),
             (Path(self.profile['render']), 'render', 'dev/dri/renderD128', True),
@@ -265,7 +286,8 @@ class DesktopMounts:
             mounts = {line.split()[4] for line in Path('/proc/self/mountinfo').read_text().splitlines()}
             for path in directory.iterdir():
                 native_gallium = re.fullmatch(r'native-libgallium-[0-9]+(?:\.[0-9]+)+\.so', path.name)
-                if (path.name not in STAGES and not native_gallium) or str(path) in mounts:
+                gamepad = re.fullmatch(r'gamepad-event[0-9]+(?:-udev)?', path.name)
+                if (path.name not in STAGES and not native_gallium and not gamepad) or str(path) in mounts:
                     raise RuntimeError('unexpected or still-mounted desktop staging path')
                 info = path.lstat()
                 if info.st_uid != 0:

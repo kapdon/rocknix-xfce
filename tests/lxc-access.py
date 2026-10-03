@@ -82,3 +82,35 @@ with tempfile.TemporaryDirectory(prefix='lxc-access-test-') as directory:
     assert item.restores == 0 and (item.state / 'grants.json').exists()
 
 print('PASS: LXC ACL journal precedes grants, restores setup failures and rejects replaced endpoints')
+
+# Only the root-owned UHID virtual DualSense gamepad may cross the input boundary.
+endpoint = Path('/dev/input/event7')
+sys_event = Path('/sys/class/input/event7')
+virtual = Path('/sys/devices/virtual/misc/uhid/0003:054C:0CE6.0001/input/input8')
+for changed, denied in (({}, False), ({'name':'DualSense Touchpad'}, True),
+                        ({'id/vendor':'2020'}, True), ({'dev':'13:72'}, True)):
+    data = {'name':'Sony Interactive Entertainment DualSense Wireless Controller',
+            'id/vendor':'054c', 'id/product':'0ce6', 'dev':'13:71'} | changed
+    def read(path):
+        return data['dev'] if path == sys_event/'dev' else data[str(path.relative_to(virtual))]
+    info = SimpleNamespace(st_uid=0, st_mode=stat.S_IFCHR|0o660, st_rdev=module.os.makedev(13,71))
+    with patch.object(Path,'lstat',return_value=info), patch.object(Path,'resolve',return_value=virtual), patch.object(Path,'read_text',read):
+        try:
+            assert module.virtual_gamepad(endpoint)==info
+        except RuntimeError:
+            assert denied
+        else:
+            assert not denied
+with patch.object(Path,'lstat',return_value=info), patch.object(Path,'resolve',return_value=Path('/sys/devices/platform/physical/input8')):
+    try:
+        module.virtual_gamepad(endpoint)
+        raise AssertionError('physical controller accepted')
+    except RuntimeError:
+        pass
+for path in ('/dev/input/js1','/dev/hidraw0','/dev/uinput','/dev/input/../event7'):
+    try:
+        module.virtual_gamepad(path)
+        raise AssertionError('non-event endpoint accepted')
+    except RuntimeError:
+        pass
+print('PASS: virtual gamepad qualification rejects physical inputs and unrelated endpoints')
